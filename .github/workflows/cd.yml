@@ -1,0 +1,121 @@
+name: CD — Apply / Destroy (ECS)
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "Action to perform"
+        required: true
+        type: choice
+        options: [apply, destroy]
+        default: apply
+      imageTag:
+        description: "Image tag to deploy (apply only; default=latest)"
+        required: false
+        type: string
+
+env:
+  AWS_REGION: us-east-1
+  CLUSTER_NAME: ecs-demo-cluster
+  SERVICE_NAME: ecs-demo-svc
+  ECR_REPOSITORY: ecs-demo-app
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  cd:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup jq
+        run: sudo apt-get update && sudo apt-get install -y jq
+
+      - name: Configure AWS (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::097635932419:role/github-actions-ecs-role
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Compute ECR URL & Tag
+        id: ecr
+        run: |
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          ECR_URL="${ACCOUNT_ID}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPOSITORY }}"
+          TAG="${{ inputs.imageTag }}"
+          if [ -z "$TAG" ]; then TAG="latest"; fi
+          echo "ECR_URL=$ECR_URL" >> $GITHUB_OUTPUT
+          echo "TAG=$TAG"         >> $GITHUB_OUTPUT
+
+      # ---------- DESTROY ----------
+      - name: Scale service to 0 (destroy)
+        if: ${{ inputs.mode == 'destroy' }}
+        run: |
+          aws ecs update-service \
+            --cluster "${{ env.CLUSTER_NAME }}" \
+            --service "${{ env.SERVICE_NAME }}" \
+            --desired-count 0 \
+            --region "${{ env.AWS_REGION }}"
+          aws ecs wait services-stable \
+            --cluster "${{ env.CLUSTER_NAME }}" \
+            --services "${{ env.SERVICE_NAME }}" \
+            --region "${{ env.AWS_REGION }}"
+          echo "✅ Service scaled to 0."
+
+      # ---------- APPLY ----------
+      - name: Get current TaskDefinition ARN
+        if: ${{ inputs.mode == 'apply' }}
+        id: svc
+        run: |
+          TD=$(aws ecs describe-services \
+              --cluster "${{ env.CLUSTER_NAME }}" \
+              --services "${{ env.SERVICE_NAME }}" \
+              --region "${{ env.AWS_REGION }}" \
+              --query "services[0].taskDefinition" --output text)
+          echo "td=$TD" >> $GITHUB_OUTPUT
+
+      - name: Download full TaskDefinition JSON
+        if: ${{ inputs.mode == 'apply' }}
+        run: |
+          aws ecs describe-task-definition \
+            --task-definition "${{ steps.svc.outputs.td }}" \
+            --region "${{ env.AWS_REGION }}" \
+            --query "taskDefinition" > taskdef.json
+
+      - name: Update image in TaskDefinition
+        if: ${{ inputs.mode == 'apply' }}
+        run: |
+          IMG="${{ steps.ecr.outputs.ECR_URL }}:${{ steps.ecr.outputs.TAG }}"
+          jq --arg IMG "$IMG" '
+            del(.revision,.status,.taskDefinitionArn,.requiresAttributes,.compatibilities,.registeredBy,.registeredAt)
+            | .containerDefinitions = (.containerDefinitions
+                | map(if .name=="app" then .image=$IMG else . end))
+          ' taskdef.json > register.json
+          echo "Will use image: $IMG"
+
+      - name: Register new TaskDefinition
+        if: ${{ inputs.mode == 'apply' }}
+        id: register
+        run: |
+          NEW_TD=$(aws ecs register-task-definition \
+            --region "${{ env.AWS_REGION }}" \
+            --cli-input-json file://register.json \
+            --query "taskDefinition.taskDefinitionArn" --output text)
+          echo "new=$NEW_TD" >> $GITHUB_OUTPUT
+
+      - name: Update Service to new TD & scale to 1
+        if: ${{ inputs.mode == 'apply' }}
+        run: |
+          aws ecs update-service \
+            --cluster "${{ env.CLUSTER_NAME }}" \
+            --service "${{ env.SERVICE_NAME }}" \
+            --task-definition "${{ steps.register.outputs.new }}" \
+            --desired-count 1 \
+            --region "${{ env.AWS_REGION }}"
+          aws ecs wait services-stable \
+            --cluster "${{ env.CLUSTER_NAME }}" \
+            --services "${{ env.SERVICE_NAME }}" \
+            --region "${{ env.AWS_REGION }}"
+          echo "✅ Deployed and service is stable."

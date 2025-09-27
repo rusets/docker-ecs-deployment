@@ -1,0 +1,11 @@
+# macOS
+.DS_Store
+
+# Terraform
+**/.terraform/
+**/terraform.tfstate
+**/terraform.tfstate.*
+
+# Node
+app/node_modules
+app/npm-debug.log*
