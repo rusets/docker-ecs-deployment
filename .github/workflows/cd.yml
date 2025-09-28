@@ -150,10 +150,39 @@ jobs:
           aws ecs wait services-stable --cluster "${{ env.CLUSTER_NAME }}" --services "${{ env.SERVICE_NAME }}" --region "${{ env.AWS_REGION }}"
           echo "✅ Deployed and service is stable."
 
-      - name: Print Public IP
+      - name: Print Public IP (robust)
         if: ${{ inputs.mode == 'apply' }}
+        env:
+          CLUSTER: ${{ env.CLUSTER_NAME }}
+          SERVICE: ${{ env.SERVICE_NAME }}
+          REGION:  ${{ env.AWS_REGION }}
         run: |
-          TASK=$(aws ecs list-tasks --cluster "${{ env.CLUSTER_NAME }}" --service-name "${{ env.SERVICE_NAME }}" --region "${{ env.AWS_REGION }}" --desired-status RUNNING --query 'taskArns[0]' --output text)
-          ENI=$(aws ecs describe-tasks --cluster "${{ env.CLUSTER_NAME }}" --tasks "$TASK" --region "${{ env.AWS_REGION }}" --query 'tasks[0].attachments[0].details[?name=="networkInterfaceId"].value' --output text)
-          IP=$(aws ec2 describe-network-interfaces --network-interface-ids "$ENI" --region "${{ env.AWS_REGION }}" --query 'NetworkInterfaces[0].Association.PublicIp' --output text)
+          set -euo pipefail
+          echo "Waiting for a RUNNING task…"
+          for i in {1..60}; do
+            TASKS=$(aws ecs list-tasks --cluster "$CLUSTER" --service-name "$SERVICE" --region "$REGION" --desired-status RUNNING --query 'taskArns' --output text)
+            if [ -n "$TASKS" ] && [ "$TASKS" != "None" ]; then break; fi
+            sleep 5
+          done
+          if [ -z "${TASKS:-}" ] || [ "$TASKS" = "None" ]; then
+            echo "No RUNNING tasks found"; exit 1
+          fi
+          IP=""
+          for T in $TASKS; do
+            for j in {1..30}; do
+              ENI=$(aws ecs describe-tasks \
+                --cluster "$CLUSTER" --tasks "$T" --region "$REGION" \
+                --query "tasks[0].attachments[?type=='ElasticNetworkInterface'].details[?name=='networkInterfaceId'].value | [0][0]" \
+                --output text)
+              if [ -n "$ENI" ] && [ "$ENI" != "None" ]; then
+                PUB=$(aws ec2 describe-network-interfaces --network-interface-ids "$ENI" --region "$REGION" --query 'NetworkInterfaces[0].Association.PublicIp' --output text)
+                if [ -n "$PUB" ] && [ "$PUB" != "None" ]; then IP="$PUB"; break; fi
+              fi
+              sleep 2
+            done
+            [ -n "$IP" ] && break
+          done
+          if [ -z "$IP" ] || [ "$IP" = "None" ]; then
+            echo "Could not resolve Public IP"; exit 1
+          fi
           echo "🌍 Public URL: http://$IP"
