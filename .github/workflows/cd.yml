@@ -110,8 +110,7 @@ jobs:
       - name: Verify state is empty (destroy)
         if: ${{ inputs.mode == 'destroy' }}
         working-directory: infra
-        run: |
-          terraform state list || echo "✅ State is empty"
+        run: terraform state list || echo "✅ State is empty"
 
       - name: Get current TaskDefinition ARN
         if: ${{ inputs.mode == 'apply' }}
@@ -149,50 +148,3 @@ jobs:
           aws ecs update-service --cluster "${{ env.CLUSTER_NAME }}" --service "${{ env.SERVICE_NAME }}" --task-definition "${{ steps.register.outputs.new }}" --desired-count 1 --region "${{ env.AWS_REGION }}"
           aws ecs wait services-stable --cluster "${{ env.CLUSTER_NAME }}" --services "${{ env.SERVICE_NAME }}" --region "${{ env.AWS_REGION }}"
           echo "✅ Deployed and service is stable."
-
-      - name: Print Public IP (robust)
-        if: ${{ inputs.mode == 'apply' }}
-        env:
-          CLUSTER: ${{ env.CLUSTER_NAME }}
-          SERVICE: ${{ env.SERVICE_NAME }}
-          REGION:  ${{ env.AWS_REGION }}
-        run: |
-          set -euo pipefail
-          echo "🔎 Waiting for a RUNNING task…"
-          for i in {1..90}; do
-            TASKS=$(aws ecs list-tasks --cluster "$CLUSTER" --service-name "$SERVICE" --region "$REGION" --desired-status RUNNING --query 'taskArns' --output text)
-            if [ -n "$TASKS" ] && [ "$TASKS" != "None" ]; then
-              echo "✅ Found tasks: $TASKS"
-              break
-            fi
-            sleep 5
-          done
-          if [ -z "${TASKS:-}" ] || [ "$TASKS" = "None" ]; then
-            echo "❌ No RUNNING tasks found"
-            exit 1
-          fi
-          echo "🔎 Waiting for ENI and Public IP…"
-          IP=""
-          PRIV=""
-          for T in $TASKS; do
-            for j in {1..60}; do
-              ENI=$(aws ecs describe-tasks --cluster "$CLUSTER" --tasks "$T" --region "$REGION" --query "tasks[0].attachments[?type=='ElasticNetworkInterface'].details[?name=='networkInterfaceId'].value | [0][0]" --output text)
-              echo "ENI: $ENI"
-              if [ -n "$ENI" ] && [ "$ENI" != "None" ]; then
-                PUB=$(aws ec2 describe-network-interfaces --network-interface-ids "$ENI" --region "$REGION" --query 'NetworkInterfaces[0].Association.PublicIp' --output text)
-                PRIV=$(aws ec2 describe-network-interfaces --network-interface-ids "$ENI" --region "$REGION" --query 'NetworkInterfaces[0].PrivateIpAddress' --output text)
-                echo "Public IP candidate: $PUB"
-                if [ -n "$PUB" ] && [ "$PUB" != "None" ]; then IP="$PUB"; break; fi
-              fi
-              sleep 5
-            done
-            [ -n "$IP" ] && break
-          done
-          if [ -z "$IP" ] || [ "$IP" = "None" ]; then
-            echo "⚠️ Could not resolve Public IP"
-            if [ -n "$PRIV" ] && [ "$PRIV" != "None" ]; then
-              echo "ℹ️ Private IP: http://$PRIV (reachable only inside VPC)"
-            fi
-            exit 0
-          fi
-          echo "🌍 Public URL: http://$IP"
