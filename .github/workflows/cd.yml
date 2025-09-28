@@ -83,29 +83,21 @@ jobs:
           aws logs delete-log-group --log-group-name "${{ env.LOG_GROUP }}" --region "${{ env.AWS_REGION }}" || true
           echo "🧹 CloudWatch log group deleted."
 
-      - name: Delete all ECR images (destroy)
-        if: ${{ inputs.mode == 'destroy' }}
-        continue-on-error: true
-        run: |
-          IMAGE_IDS=$(aws ecr list-images --repository-name "${{ env.ECR_REPOSITORY }}" --region "${{ env.AWS_REGION }}" --query 'imageIds[*]' --output json || echo "[]")
-          if [ "$IMAGE_IDS" != "[]" ]; then
-            aws ecr batch-delete-image --repository-name "${{ env.ECR_REPOSITORY }}" --region "${{ env.AWS_REGION }}" --image-ids "$IMAGE_IDS" || true
-            echo "🧹 ECR images deleted."
-          else
-            echo "ℹ️ No images in ECR."
-          fi
-
-      - name: Delete ECR repository (destroy)
-        if: ${{ inputs.mode == 'destroy' }}
-        continue-on-error: true
-        run: |
-          aws ecr delete-repository --repository-name "${{ env.ECR_REPOSITORY }}" --region "${{ env.AWS_REGION }}" --force || true
-          echo "🗑️ ECR repository deleted."
-
       - name: Terraform destroy (full cleanup)
         if: ${{ inputs.mode == 'destroy' }}
         working-directory: infra
         run: terraform destroy -auto-approve -input=false || true
+
+      - name: ECR fallback cleanup (destroy)
+        if: ${{ inputs.mode == 'destroy' }}
+        continue-on-error: true
+        run: |
+          IMAGES=$(aws ecr list-images --repository-name "${{ env.ECR_REPOSITORY }}" --region "${{ env.AWS_REGION }}" --query 'imageIds[*]' --output json 2>/dev/null || echo "[]")
+          if [ "$IMAGES" != "[]" ]; then
+            aws ecr batch-delete-image --repository-name "${{ env.ECR_REPOSITORY }}" --region "${{ env.AWS_REGION }}" --image-ids "$IMAGES" || true
+          fi
+          aws ecr delete-repository --repository-name "${{ env.ECR_REPOSITORY }}" --region "${{ env.AWS_REGION }}" --force || true
+          echo "🗑️ Ensured ECR repo removed."
 
       - name: Verify state is empty (destroy)
         if: ${{ inputs.mode == 'destroy' }}
