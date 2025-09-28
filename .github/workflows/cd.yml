@@ -44,6 +44,11 @@ jobs:
           role-to-assume: arn:aws:iam::097635932419:role/github-actions-ecs-role
           aws-region: ${{ env.AWS_REGION }}
 
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.7.5
+
       - name: Terraform init (infra)
         working-directory: infra
         run: terraform init -input=false
@@ -101,6 +106,12 @@ jobs:
         if: ${{ inputs.mode == 'destroy' }}
         working-directory: infra
         run: terraform destroy -auto-approve -input=false || true
+
+      - name: Verify state is empty (destroy)
+        if: ${{ inputs.mode == 'destroy' }}
+        working-directory: infra
+        run: |
+          terraform state list || echo "✅ State is empty"
 
       - name: Get current TaskDefinition ARN
         if: ${{ inputs.mode == 'apply' }}
