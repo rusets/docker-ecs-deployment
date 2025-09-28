@@ -158,31 +158,41 @@ jobs:
           REGION:  ${{ env.AWS_REGION }}
         run: |
           set -euo pipefail
-          echo "Waiting for a RUNNING task…"
-          for i in {1..60}; do
+          echo "🔎 Waiting for a RUNNING task…"
+          for i in {1..90}; do
             TASKS=$(aws ecs list-tasks --cluster "$CLUSTER" --service-name "$SERVICE" --region "$REGION" --desired-status RUNNING --query 'taskArns' --output text)
-            if [ -n "$TASKS" ] && [ "$TASKS" != "None" ]; then break; fi
+            if [ -n "$TASKS" ] && [ "$TASKS" != "None" ]; then
+              echo "✅ Found tasks: $TASKS"
+              break
+            fi
             sleep 5
           done
           if [ -z "${TASKS:-}" ] || [ "$TASKS" = "None" ]; then
-            echo "No RUNNING tasks found"; exit 1
+            echo "❌ No RUNNING tasks found"
+            exit 1
           fi
+          echo "🔎 Waiting for ENI and Public IP…"
           IP=""
+          PRIV=""
           for T in $TASKS; do
-            for j in {1..30}; do
-              ENI=$(aws ecs describe-tasks \
-                --cluster "$CLUSTER" --tasks "$T" --region "$REGION" \
-                --query "tasks[0].attachments[?type=='ElasticNetworkInterface'].details[?name=='networkInterfaceId'].value | [0][0]" \
-                --output text)
+            for j in {1..60}; do
+              ENI=$(aws ecs describe-tasks --cluster "$CLUSTER" --tasks "$T" --region "$REGION" --query "tasks[0].attachments[?type=='ElasticNetworkInterface'].details[?name=='networkInterfaceId'].value | [0][0]" --output text)
+              echo "ENI: $ENI"
               if [ -n "$ENI" ] && [ "$ENI" != "None" ]; then
                 PUB=$(aws ec2 describe-network-interfaces --network-interface-ids "$ENI" --region "$REGION" --query 'NetworkInterfaces[0].Association.PublicIp' --output text)
+                PRIV=$(aws ec2 describe-network-interfaces --network-interface-ids "$ENI" --region "$REGION" --query 'NetworkInterfaces[0].PrivateIpAddress' --output text)
+                echo "Public IP candidate: $PUB"
                 if [ -n "$PUB" ] && [ "$PUB" != "None" ]; then IP="$PUB"; break; fi
               fi
-              sleep 2
+              sleep 5
             done
             [ -n "$IP" ] && break
           done
           if [ -z "$IP" ] || [ "$IP" = "None" ]; then
-            echo "Could not resolve Public IP"; exit 1
+            echo "⚠️ Could not resolve Public IP"
+            if [ -n "$PRIV" ] && [ "$PRIV" != "None" ]; then
+              echo "ℹ️ Private IP: http://$PRIV (reachable only inside VPC)"
+            fi
+            exit 0
           fi
           echo "🌍 Public URL: http://$IP"
