@@ -53,17 +53,18 @@ jobs:
         working-directory: infra
         run: terraform init -input=false
 
-      - name: Pre-clean ECR if exists (before apply)
+      # Импортируем существующий ECR в стейт перед apply, чтобы не сносить образы
+      - name: Terraform import ECR if exists (before apply)
         if: ${{ inputs.mode == 'apply' }}
+        working-directory: infra
+        env:
+          AWS_PAGER: ""
         run: |
           if aws ecr describe-repositories --repository-names "${{ env.ECR_REPOSITORY }}" --region "${{ env.AWS_REGION }}" >/dev/null 2>&1; then
-            echo "⚠️ ECR repo already exists, cleaning up..."
-            IMAGES=$(aws ecr list-images --repository-name "${{ env.ECR_REPOSITORY }}" --region "${{ env.AWS_REGION }}" --query 'imageIds[*]' --output json || echo "[]")
-            if [ "$IMAGES" != "[]" ]; then
-              aws ecr batch-delete-image --repository-name "${{ env.ECR_REPOSITORY }}" --region "${{ env.AWS_REGION }}" --image-ids "$IMAGES" || true
-            fi
-            aws ecr delete-repository --repository-name "${{ env.ECR_REPOSITORY }}" --region "${{ env.AWS_REGION }}" --force || true
-            echo "✅ Old ECR repository removed"
+            echo "ECR repo exists in AWS, ensure it's tracked in TF state…"
+            terraform state show aws_ecr_repository.this >/dev/null 2>&1 || terraform import aws_ecr_repository.this "${{ env.ECR_REPOSITORY }}"
+          else
+            echo "ECR repo not found — Terraform will create it."
           fi
 
       - name: Terraform apply (infra)
@@ -80,6 +81,19 @@ jobs:
           if [ -z "$TAG" ]; then TAG="latest"; fi
           echo "ECR_URL=$ECR_URL" >> $GITHUB_OUTPUT
           echo "TAG=$TAG"         >> $GITHUB_OUTPUT
+
+      # Проверяем, что нужный тег реально есть в ECR, иначе дальше нет смысла деплоить
+      - name: Assert image tag exists in ECR
+        if: ${{ inputs.mode == 'apply' }}
+        run: |
+          COUNT=$(aws ecr describe-images --repository-name "${{ env.ECR_REPOSITORY }}" --region "${{ env.AWS_REGION }}" \
+            --query "length(imageDetails[?contains(imageTags, \`${{ steps.ecr.outputs.TAG }}\`) == \`true\`])" --output text)
+          if [ "$COUNT" -eq 0 ]; then
+            echo "❌ Image tag not found in ECR: ${{ steps.ecr.outputs.ECR_URL }}:${{ steps.ecr.outputs.TAG }}"
+            exit 1
+          else
+            echo "✅ Found image tag: ${{ steps.ecr.outputs.ECR_URL }}:${{ steps.ecr.outputs.TAG }}"
+          fi
 
       - name: Scale to 0 and wait (destroy)
         if: ${{ inputs.mode == 'destroy' }}
@@ -109,7 +123,7 @@ jobs:
             IMAGES=$(aws ecr list-images --repository-name "${{ env.ECR_REPOSITORY }}" --region "${{ env.AWS_REGION }}" --query 'imageIds[*]' --output json || echo "[]")
             if [ "$IMAGES" != "[]" ]; then
               aws ecr batch-delete-image --repository-name "${{ env.ECR_REPOSITORY }}" --region "${{ env.AWS_REGION }}" --image-ids "$IMAGES" || true
-            fi
+            fi>
             aws ecr delete-repository --repository-name "${{ env.ECR_REPOSITORY }}" --region "${{ env.AWS_REGION }}" --force || true
             echo "🗑️ Ensured ECR repo removed."
           fi
