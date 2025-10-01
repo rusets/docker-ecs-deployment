@@ -53,6 +53,19 @@ jobs:
         working-directory: infra
         run: terraform init -input=false
 
+      - name: Pre-clean ECR if exists (before apply)
+        if: ${{ inputs.mode == 'apply' }}
+        run: |
+          if aws ecr describe-repositories --repository-names "${{ env.ECR_REPOSITORY }}" --region "${{ env.AWS_REGION }}" >/dev/null 2>&1; then
+            echo "⚠️ ECR repo already exists, cleaning up..."
+            IMAGES=$(aws ecr list-images --repository-name "${{ env.ECR_REPOSITORY }}" --region "${{ env.AWS_REGION }}" --query 'imageIds[*]' --output json || echo "[]")
+            if [ "$IMAGES" != "[]" ]; then
+              aws ecr batch-delete-image --repository-name "${{ env.ECR_REPOSITORY }}" --region "${{ env.AWS_REGION }}" --image-ids "$IMAGES" || true
+            fi
+            aws ecr delete-repository --repository-name "${{ env.ECR_REPOSITORY }}" --region "${{ env.AWS_REGION }}" --force || true
+            echo "✅ Old ECR repository removed"
+          fi
+
       - name: Terraform apply (infra)
         if: ${{ inputs.mode == 'apply' }}
         working-directory: infra
@@ -92,12 +105,14 @@ jobs:
         if: ${{ inputs.mode == 'destroy' }}
         continue-on-error: true
         run: |
-          IMAGES=$(aws ecr list-images --repository-name "${{ env.ECR_REPOSITORY }}" --region "${{ env.AWS_REGION }}" --query 'imageIds[*]' --output json 2>/dev/null || echo "[]")
-          if [ "$IMAGES" != "[]" ]; then
-            aws ecr batch-delete-image --repository-name "${{ env.ECR_REPOSITORY }}" --region "${{ env.AWS_REGION }}" --image-ids "$IMAGES" || true
+          if aws ecr describe-repositories --repository-names "${{ env.ECR_REPOSITORY }}" --region "${{ env.AWS_REGION }}" >/dev/null 2>&1; then
+            IMAGES=$(aws ecr list-images --repository-name "${{ env.ECR_REPOSITORY }}" --region "${{ env.AWS_REGION }}" --query 'imageIds[*]' --output json || echo "[]")
+            if [ "$IMAGES" != "[]" ]; then
+              aws ecr batch-delete-image --repository-name "${{ env.ECR_REPOSITORY }}" --region "${{ env.AWS_REGION }}" --image-ids "$IMAGES" || true
+            fi
+            aws ecr delete-repository --repository-name "${{ env.ECR_REPOSITORY }}" --region "${{ env.AWS_REGION }}" --force || true
+            echo "🗑️ Ensured ECR repo removed."
           fi
-          aws ecr delete-repository --repository-name "${{ env.ECR_REPOSITORY }}" --region "${{ env.AWS_REGION }}" --force || true
-          echo "🗑️ Ensured ECR repo removed."
 
       - name: Verify state is empty (destroy)
         if: ${{ inputs.mode == 'destroy' }}
