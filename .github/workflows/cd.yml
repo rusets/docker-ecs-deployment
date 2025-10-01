@@ -82,17 +82,24 @@ jobs:
           echo "ECR_URL=$ECR_URL" >> $GITHUB_OUTPUT
           echo "TAG=$TAG"         >> $GITHUB_OUTPUT
 
-      # Проверяем, что нужный тег реально есть в ECR, иначе дальше нет смысла деплоить
+      # Проверяем, что нужный тег реально есть в ECR (устойчиво к null)
       - name: Assert image tag exists in ECR
         if: ${{ inputs.mode == 'apply' }}
+        env:
+          AWS_PAGER: ""
         run: |
-          COUNT=$(aws ecr describe-images --repository-name "${{ env.ECR_REPOSITORY }}" --region "${{ env.AWS_REGION }}" \
-            --query "length(imageDetails[?contains(imageTags, \`${{ steps.ecr.outputs.TAG }}\`) == \`true\`])" --output text)
+          TAG="${{ steps.ecr.outputs.TAG }}"
+          COUNT=$(aws ecr list-images \
+            --repository-name "${{ env.ECR_REPOSITORY }}" \
+            --region "${{ env.AWS_REGION }}" \
+            --filter tagStatus=TAGGED \
+            --query "length(imageIds[?imageTag=='${TAG}'])" \
+            --output text)
           if [ "$COUNT" -eq 0 ]; then
-            echo "❌ Image tag not found in ECR: ${{ steps.ecr.outputs.ECR_URL }}:${{ steps.ecr.outputs.TAG }}"
+            echo "❌ Image tag not found in ECR: ${{ steps.ecr.outputs.ECR_URL }}:${TAG}"
             exit 1
           else
-            echo "✅ Found image tag: ${{ steps.ecr.outputs.ECR_URL }}:${{ steps.ecr.outputs.TAG }}"
+            echo "✅ Found image tag: ${{ steps.ecr.outputs.ECR_URL }}:${TAG}"
           fi
 
       - name: Scale to 0 and wait (destroy)
@@ -118,6 +125,8 @@ jobs:
       - name: ECR fallback cleanup (destroy)
         if: ${{ inputs.mode == 'destroy' }}
         continue-on-error: true
+        env:
+          AWS_PAGER: ""
         run: |
           if aws ecr describe-repositories --repository-names "${{ env.ECR_REPOSITORY }}" --region "${{ env.AWS_REGION }}" >/dev/null 2>&1; then
             IMAGES=$(aws ecr list-images --repository-name "${{ env.ECR_REPOSITORY }}" --region "${{ env.AWS_REGION }}" --query 'imageIds[*]' --output json || echo "[]")
