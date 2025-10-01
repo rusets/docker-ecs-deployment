@@ -123,7 +123,7 @@ jobs:
             IMAGES=$(aws ecr list-images --repository-name "${{ env.ECR_REPOSITORY }}" --region "${{ env.AWS_REGION }}" --query 'imageIds[*]' --output json || echo "[]")
             if [ "$IMAGES" != "[]" ]; then
               aws ecr batch-delete-image --repository-name "${{ env.ECR_REPOSITORY }}" --region "${{ env.AWS_REGION }}" --image-ids "$IMAGES" || true
-            fi>
+            fi
             aws ecr delete-repository --repository-name "${{ env.ECR_REPOSITORY }}" --region "${{ env.AWS_REGION }}" --force || true
             echo "🗑️ Ensured ECR repo removed."
           fi
