@@ -1,0 +1,49 @@
+name: OPS — Wake/Sleep ECS Service
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "wake = scale to 1; sleep = scale to 0"
+        required: true
+        type: choice
+        options: [wake, sleep]
+        default: wake
+
+env:
+  AWS_REGION: us-east-1
+  CLUSTER_NAME: ecs-demo-cluster
+  SERVICE_NAME: ecs-demo-svc
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  scale:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Configure AWS (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::097635932419:role/github-actions-ecs-role
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Update service desired count
+        run: |
+          if [ "${{ github.event.inputs.action }}" = "wake" ]; then
+            COUNT=1
+          else
+            COUNT=0
+          fi
+          echo "Scaling service to $COUNT"
+          aws ecs update-service \
+            --cluster "${{ env.CLUSTER_NAME }}" \
+            --service "${{ env.SERVICE_NAME }}" \
+            --desired-count $COUNT \
+            --region "${{ env.AWS_REGION }}"
+          aws ecs wait services-stable \
+            --cluster "${{ env.CLUSTER_NAME }}" \
+            --services "${{ env.SERVICE_NAME }}" \
+            --region "${{ env.AWS_REGION }}"
+          echo "✅ Service scaled to $COUNT"
