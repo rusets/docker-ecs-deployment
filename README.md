@@ -1,201 +1,127 @@
-# Docker ECS Deployment — Fargate with Wake/Sleep (No ALB)
+# 🚀 Docker ECS Deployment Demo
 
-Run a tiny Node.js app on **Amazon ECS Fargate** with a public IP (no ALB).  
-Scale down to zero when idle, and **wake on demand** via **API Gateway + Lambda**.
-
-> ✅ Goals: minimal cost, simple infra, nice demo UI, autosleep, manual wake.
+This repository demonstrates how to run a **production-like app on AWS ECS Fargate without ALB** and keep costs minimal by using a **Wake/Sleep pattern** with Lambda + API Gateway.
 
 ---
 
-## 🗺️ Architecture
-
-```mermaid
-flowchart LR
-  subgraph GitHub
-    A1[CI — Build & Push to ECR\n(ci.yml)]
-    A2[CD — Terraform Apply + Deploy/Destroy\n(cd.yml)]
-    A3[OPS — Wake/Sleep ECS Service\n(ops.yml)]
-  end
-
-  subgraph AWS
-    subgraph VPC
-      E[ECS Service (Fargate)]
-      C[Task/Container (Node.js)]
-      SG[(Security Group)]
-      Sub1[(Public Subnet A)]
-      Sub2[(Public Subnet B)]
-    end
-
-    L[Lambda "wake"] -->|UpdateService(desired=1)| E
-    EV[EventBridge rule (rate 1m)] -->|invoke| SLP[Lambda "autosleep"]
-    SLP -->|UpdateService(desired=0)| E
-
-    APIGW[API Gateway (HTTP API)] -->|proxy| L
-  end
-
-  user((User)) -->|open wake URL| APIGW
-  A2 -->|terraform apply| AWS
-  E -.public IP.-> user
-
-  C -->|/health,/api| user
-```
-
-**Why no ALB?** For the cheapest always-public option in a demo: Fargate task gets a public IP directly, security group allows `:80`.
-
----
-
-## 📁 Repository structure
+## 📂 Repository Structure
 
 ```
 .
-├─ app/                   # Node.js demo app (Express)
-│  ├─ Dockerfile
-│  ├─ package.json
-│  └─ src/server.js
-├─ infra/                 # Terraform (VPC, ECS, API GW, Lambdas, EventBridge)
-│  └─ main.tf
-├─ wake/                  # Lambda "wake" (API Gateway handler)
-│  └─ lambda_function.py
-├─ autosleep/             # Lambda "autosleep"
-│  └─ auto_sleep.py
-├─ .github/workflows/
-│  ├─ ci.yml              # CI — Build & Push to ECR
-│  ├─ cd.yml              # CD — Terraform Apply + Deploy/Destroy
-│  └─ ops.yml             # OPS — Wake/Sleep ECS Service
-├─ make_zips.sh           # builds infra/wake.zip and infra/sleep.zip
-└─ README.md
+├── app/                  # Node.js demo application (Express server with UI, metrics, logs)
+│   ├── Dockerfile
+│   └── src/server.js
+│
+├── infra/                # Terraform IaC for ECS, ECR, VPC, Lambda Wake/Sleep, API Gateway
+│   ├── main.tf
+│   ├── variables.tf
+│   ├── outputs.tf
+│   └── ...
+│
+├── wake/                 # Lambda function to "wake up" ECS service
+│   └── lambda_function.py
+│
+├── autosleep/            # Lambda function to automatically stop idle ECS service
+│   └── auto_sleep.py
+│
+├── .github/workflows/    # GitHub Actions CI/CD pipelines
+│   ├── ci.yml            # Build & Push to ECR
+│   ├── cd.yml            # Terraform Apply + Deploy/Destroy
+│   └── ops.yml           # Wake/Sleep ECS Service
+│
+└── README.md             # Documentation
 ```
 
-> **Tip:** `infra/wake.zip` and `infra/sleep.zip` must exist **before** `terraform apply`. Use `./make_zips.sh` locally or add a build step to `cd.yml`.
+---
+
+## ⚙️ Workflows (CI/CD)
+
+```mermaid
+graph TD
+  A1[CI — Build & Push to ECR (ci.yml)] --> A2[CD — Terraform Apply + Deploy/Destroy (cd.yml)]
+  A2 --> A3[OPS — Wake/Sleep ECS Service (ops.yml)]
+```
+
+- **CI**: builds and pushes Docker image to ECR on each push.  
+- **CD**: provisions/updates ECS + infra with Terraform.  
+- **OPS**: provides manual wake/sleep operations via GitHub Actions.
 
 ---
 
-## 🧰 Prerequisites
+## 🌐 Application Features
 
-- AWS account + S3 bucket & DynamoDB table for Terraform backend (see `infra/main.tf`).
-- IAM role for **GitHub OIDC** with least-privilege (ECR/ECS/EC2/Lambda/API GW/Events + S3+DDB backend).
-- Docker, AWS CLI, Terraform (for local runs).
+- Node.js + Express demo app with:
+  - Health endpoint (`/health`)
+  - Metrics endpoint (`/api/metrics`)
+  - Logs (JSON + SSE streaming)
+  - Simple UI (dark/light theme, live logs, action buttons)
+
+- ECS Fargate service with **desiredCount = 0** by default (sleeping).  
+- Lambda + API Gateway **Wake URL** to scale service from 0 → 1 automatically.  
+- Auto-Sleep Lambda scales back to 0 after inactivity.
 
 ---
 
-## 🚀 Quick start (local)
+## 🏗️ Infrastructure Overview
+
+```mermaid
+graph TD
+  subgraph VPC[Custom VPC]
+    ECS[ECS Fargate Service]
+    ECR[ECR Repository]
+    CW[CloudWatch Logs]
+  end
+
+  API[API Gateway HTTPS Endpoint] --> L1[Lambda Wake Function]
+  L1 --> ECS
+  ECS --> CW
+
+  EB[EventBridge Rule] --> L2[Lambda Auto-Sleep]
+  L2 --> ECS
+```
+
+- **ECS Fargate** runs containerized app (ARM64, Node.js).  
+- **ECR** stores Docker images.  
+- **CloudWatch Logs** stores app + infra logs.  
+- **API Gateway + Lambda** handles wake-up.  
+- **EventBridge + Lambda** enforces auto-sleep after N minutes.
+
+---
+
+## DNS & Public Access
+
+The project is exposed via a custom domain:
+
+🔗 **https://ecs-demo.online**
+
+- The domain is managed via **Namecheap** and delegated to **Route 53** hosted zone.  
+- The root (`ecs-demo.online`) is mapped to the **API Gateway (Wake URL)** via Route 53 alias record.  
+- First visit → API Gateway triggers Lambda wake-up → ECS Fargate task starts.  
+- After ~30–60s cold start the container becomes reachable on the public IP, and user is redirected to the running service.  
+
+> ⚠️ If the service is **asleep** (scaled to 0), you may need to reload once and wait for the wake-up screen to complete.
+
+---
+
+## 🧑‍💻 Usage
 
 ```bash
-# 1) Build lambda zips (must exist for TF)
-./make_zips.sh
+# Build and push image
+docker build -t ecs-demo-app .
+docker tag ecs-demo-app:latest <ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com/ecs-demo-app:latest
+docker push <ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com/ecs-demo-app:latest
 
-# 2) Terraform
+# Deploy infra (Terraform)
 cd infra
-terraform init -input=false
-terraform apply -auto-approve -input=false
+terraform init
+terraform apply -auto-approve
 
-# 3) Outputs
-terraform output wake_url           # HTTP API to wake the service
-terraform output ecr_repository_url # ECR URL for images
+# Get wake URL
+terraform output wake_url
 ```
 
-**Wake flow**  
-Open `wake_url` in a browser → Lambda sets `desiredCount=1`, polls task ENI, and redirects to the task’s IP (or shows a “Warming up…” page with auto-retry until `WAIT_MS`).
-
-**Auto-sleep**  
-`autosleep` Lambda runs every minute. If the task uptime ≥ `sleep_after_minutes` (default **5**), the service scales to `0`.
-
 ---
 
-## 🧪 GitHub Actions Workflows
+## 📜 License
 
-### 1) **CI — Build & Push to ECR** (`.github/workflows/ci.yml`)
-- Triggers on push to `main` (or tags).
-- Logs in to ECR, builds Docker image from `app/`, pushes as `:latest` and `:${GIT_SHA}`.
-- Useful outputs: the full `ECR_URL:TAG` for the CD job.
-
-### 2) **CD — Terraform Apply + Deploy/Destroy** (`.github/workflows/cd.yml`)
-- Manual **workflow_dispatch** with inputs:
-  - `mode`: `apply` (provision + deploy) or `destroy` (cleanup).
-  - `imageTag`: optional image tag (default `latest`).
-- Steps (apply):
-  1. `terraform init`
-  2. Import existing ECR (if needed) to avoid state drift.
-  3. `terraform apply`
-  4. Assert image tag exists in ECR.
-  5. Download current TaskDefinition JSON.
-  6. Patch container image to the selected tag.
-  7. Register new TaskDefinition.
-  8. Update the ECS Service & **wait** for `services-stable`.
-- Steps (destroy):
-  - Scale ECS service to 0, delete CloudWatch log group, then `terraform destroy` (with guard to skip deleting API Gateway stage if a custom domain is mapped).
-
-### 3) **OPS — Wake/Sleep ECS Service** (`.github/workflows/ops.yml`)
-- Manual operational commands:
-  - **Wake**: calls the Lambda/API to set `desired=1`.
-  - **Sleep**: sets `desired=0`.
-- Handy for quick manual interventions without touching Terraform.
-
----
-
-## ⚙️ Terraform variables
-
-| Variable               | Default     | Notes                                       |
-|------------------------|-------------|---------------------------------------------|
-| `project_name`         | `ecs-demo`  | Name prefix                                 |
-| `region`               | `us-east-1` | AWS Region                                  |
-| `app_port`             | `80`        | Container port                              |
-| `task_cpu` / `task_memory` | `256` / `512` | Fargate task size                       |
-| `desired_count`        | `0`         | 0 = idle on boot                            |
-| `enable_wake_api`      | `true`      | API Gateway + Lambda (wake)                 |
-| `enable_auto_sleep`    | `true`      | EventBridge + Lambda (autosleep)            |
-| `sleep_after_minutes`  | `5`         | Scale to 0 after N minutes                  |
-| `WAIT_MS` (Lambda env) | `120000`    | Total wait budget on the waiting page (ms)  |
-
----
-
-## 🌐 Custom domain (optional)
-
-- Buy a domain (e.g., **ecs-demo.online**).
-- **Apex** (`ecs-demo.online`): use `A/AAAA` (or **ALIAS**) — **CNAME at apex is not allowed**.
-- Subdomain (`app.ecs-demo.online`): you can use **CNAME** to a stable target (e.g., CloudFront or ALB).  
-  This project redirects to **task public IP** after wake; if you want a stable hostname in the browser bar during wake, keep a public edge (CloudFront/ALB) up to proxy to the task once ready.
-
-- TLS: issue an ACM certificate (DNS validation in Route 53). When deleting API GW `$default` stage, remove any **base path mappings** first.
-
----
-
-## 💸 Costs (rough, us-east-1)
-
-- Fargate task 0→1 sporadically: pay only when running (~$0.04–0.06/hr for 0.25 vCPU/0.5GB) + data out.
-- Lambda + API Gateway + EventBridge: cents/month for tiny traffic.
-- Route 53 hosted zone: ~$0.50/mo; DNS queries ~$0.40 per 1M (very low).
-- ECR: first 500MB free tier, storage pennies after.
-
----
-
-## 🛠 Troubleshooting
-
-- **`ENOENT wake.zip/sleep.zip` in Terraform** → run `./make_zips.sh` first.
-- **`iam:PassRole` / `lambda:GetPolicy` / `events:*` AccessDenied** → extend the OIDC role policy with:
-  - `iam:PassRole` for Lambda roles (`wake-ecs-role`, `${project}-autosleep-role`)
-  - `lambda:GetPolicy`, `lambda:ListVersionsByFunction`, `lambda:GetFunctionCodeSigningConfig`
-  - `events:DescribeRule`, `events:ListTagsForResource`
-  - `apigateway:*` as needed for stage reads/deletes (or skip deletes on destroy)
-- **API GW `$default` stage deletion fails** → remove base path mappings first or guard in Terraform during `destroy`.
-
----
-
-## 🧹 Clean up
-
-```bash
-# Optional: scale to 0
-aws ecs update-service --cluster ecs-demo-cluster --service ecs-demo-svc --desired-count 0 --region us-east-1
-
-# Terraform
-cd infra
-terraform destroy -auto-approve -input=false
-```
-
-If you mapped a custom API domain, remove the base path mapping before destroying the `$default` stage.
-
----
-
-## 📄 License
-
-MIT (or your preference)
+MIT — use freely for demo/learning purposes.
