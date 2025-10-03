@@ -44,6 +44,22 @@ jobs:
           role-to-assume: arn:aws:iam::097635932419:role/github-actions-ecs-role
           aws-region: ${{ env.AWS_REGION }}
 
+      - name: Package Lambda zips
+        run: |
+          set -e
+          mkdir -p infra
+          if [ -f wake/lambda_function.py ]; then
+            (cd wake && zip -r ../infra/wake.zip lambda_function.py >/dev/null)
+          else
+            echo "wake/lambda_function.py not found, skipping wake.zip"
+          fi
+          if [ -f autosleep/auto_sleep.py ]; then
+            (cd autosleep && zip -r ../infra/sleep.zip auto_sleep.py >/dev/null)
+          else
+            echo "autosleep/auto_sleep.py not found, skipping sleep.zip"
+          fi
+          ls -l infra/*.zip || true
+
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
@@ -61,6 +77,8 @@ jobs:
         run: |
           if aws ecr describe-repositories --repository-names "${{ env.ECR_REPOSITORY }}" --region "${{ env.AWS_REGION }}" >/dev/null 2>&1; then
             terraform state show aws_ecr_repository.this >/dev/null 2>&1 || terraform import aws_ecr_repository.this "${{ env.ECR_REPOSITORY }}"
+          else
+            echo "ECR not found — Terraform will create it."
           fi
 
       - name: Terraform apply (infra)
@@ -147,44 +165,24 @@ jobs:
       - name: Download full TaskDefinition JSON
         if: ${{ inputs.mode == 'apply' }}
         run: |
-          aws ecs describe-task-definition \
-            --task-definition "${{ steps.svc.outputs.td }}" \
-            --region "${{ env.AWS_REGION }}" \
-            --query "taskDefinition" > taskdef.json
+          aws ecs describe-task-definition --task-definition "${{ steps.svc.outputs.td }}" --region "${{ env.AWS_REGION }}" --query "taskDefinition" > taskdef.json
 
-      - name: Update image in TaskDefinition (minimal spec)
+      - name: Update image in TaskDefinition
         if: ${{ inputs.mode == 'apply' }}
         env:
           IMG: ${{ steps.ecr.outputs.ECR_URL }}:${{ steps.ecr.outputs.TAG }}
         run: |
           jq --arg IMG "$IMG" '
-            {
-              family: .family,
-              taskRoleArn: .taskRoleArn,
-              executionRoleArn: .executionRoleArn,
-              networkMode: .networkMode,
-              containerDefinitions: (
-                .containerDefinitions
-                | map(if .name=="app" then (.image=$IMG) else . end)
-              ),
-              volumes: (.volumes // []),
-              requiresCompatibilities: .requiresCompatibilities,
-              cpu: .cpu,
-              memory: .memory,
-              runtimePlatform: .runtimePlatform
-            }
+            del(.revision,.status,.taskDefinitionArn,.requiresAttributes,.compatibilities,.registeredBy,.registeredAt,.deregisteredAt)
+            | .containerDefinitions = (.containerDefinitions | map(if .name=="app" then .image=$IMG else . end))
           ' taskdef.json > register.json
           echo "Using image: $IMG"
-          jq -C . register.json
 
       - name: Register new TaskDefinition
         if: ${{ inputs.mode == 'apply' }}
         id: register
         run: |
-          NEW_TD=$(aws ecs register-task-definition \
-            --region "${{ env.AWS_REGION }}" \
-            --cli-input-json file://register.json \
-            --query "taskDefinition.taskDefinitionArn" --output text)
+          NEW_TD=$(aws ecs register-task-definition --region "${{ env.AWS_REGION }}" --cli-input-json file://register.json --query "taskDefinition.taskDefinitionArn" --output text)
           echo "new=$NEW_TD" >> $GITHUB_OUTPUT
 
       - name: Update Service & wait
