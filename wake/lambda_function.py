@@ -78,7 +78,7 @@ def _waiting_page(api_url: str, started_ms: int, elapsed_ms: int):
       <h1 style="margin:0">Warming up the service…</h1>
     </div>
     <p class="muted" style="margin-top:8px">
-      A cold start may take 10–90 seconds.
+      A cold start may take 10–120 seconds.
     </p>
     <p style="margin:16px 0 8px">
       Progress: <span class="pill">{secs_elapsed}s / ~{secs_total}s</span>
