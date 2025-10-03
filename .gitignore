@@ -1,13 +1,17 @@
-# macOS
-.DS_Store
-
 # Terraform
-**/.terraform/
-**/terraform.tfstate
-**/terraform.tfstate.*
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.lock.hcl
+
+# Lambda zips
+infra/wake.zip
+infra/sleep.zip
 
 # Node
-app/node_modules
-app/npm-debug.log*
-# Zip
-wake.zip
+node_modules/
+npm-debug.log
+
+# Python
+__pycache__/
+*.pyc
