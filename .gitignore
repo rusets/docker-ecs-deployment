@@ -9,3 +9,6 @@
 # Node
 app/node_modules
 app/npm-debug.log*
+# Zip
+
+wake.zip
