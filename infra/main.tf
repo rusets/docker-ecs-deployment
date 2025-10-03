@@ -65,6 +65,29 @@ variable "ecr_repo_name" {
   default = "ecs-demo-app"
 }
 
+variable "enable_wake_api" {
+  type    = bool
+  default = true
+}
+
+variable "enable_auto_sleep" {
+  type    = bool
+  default = true
+}
+
+variable "sleep_after_minutes" {
+  type    = number
+  default = 5
+}
+
+locals {
+  wake_zip_path  = "${path.module}/wake.zip"
+  wake_zip_hash  = try(filebase64sha256(local.wake_zip_path), "")
+
+  sleep_zip_path = "${path.module}/sleep.zip"
+  sleep_zip_hash = try(filebase64sha256(local.sleep_zip_path), "")
+}
+
 data "aws_availability_zones" "available" {}
 
 module "vpc" {
@@ -82,24 +105,20 @@ module "vpc" {
 
 resource "aws_security_group" "service" {
   name_prefix = "${var.project_name}-svc-"
-  description = "Allow HTTP to app"
   vpc_id      = module.vpc.vpc_id
 
   ingress {
-    description      = "HTTP from anywhere"
-    from_port        = var.app_port
-    to_port          = var.app_port
-    protocol         = "tcp"
-    cidr_blocks      = ["0.0.0.0/0"]
-    ipv6_cidr_blocks = ["::/0"]
+    from_port   = var.app_port
+    to_port     = var.app_port
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
   }
 
   egress {
-    from_port        = 0
-    to_port          = 0
-    protocol         = "-1"
-    cidr_blocks      = ["0.0.0.0/0"]
-    ipv6_cidr_blocks = ["::/0"]
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
   }
 
   tags = { Project = var.project_name }
@@ -206,11 +225,7 @@ resource "aws_ecs_task_definition" "app" {
           awslogs-region        = var.region,
           awslogs-stream-prefix = "ecs"
         }
-      },
-      environment = [
-        { name = "APP_NAME", value = "Ruslan AWS 🚀" },
-        { name = "APP_ENV",  value = "prod" }
-      ]
+      }
     }
   ])
 
@@ -233,12 +248,8 @@ resource "aws_ecs_service" "app" {
   network_configuration {
     subnets          = module.vpc.public_subnets
     security_groups  = [aws_security_group.service.id]
-    assign_public_ip = true
+  assign_public_ip = true
   }
-
-  deployment_minimum_healthy_percent = 100
-  deployment_maximum_percent         = 200
-  health_check_grace_period_seconds  = 30
 
   deployment_circuit_breaker {
     enable   = true
@@ -250,24 +261,6 @@ resource "aws_ecs_service" "app" {
   }
 
   tags = { Project = var.project_name }
-}
-
-output "ecr_repository_url" {
-  value = aws_ecr_repository.this.repository_url
-}
-output "cluster_name" {
-  value = aws_ecs_cluster.this.name
-}
-output "service_name" {
-  value = aws_ecs_service.app.name
-}
-output "region" {
-  value = var.region
-}
-
-variable "enable_wake_api" {
-  type    = bool
-  default = true
 }
 
 resource "aws_iam_role" "wake_role" {
@@ -300,22 +293,18 @@ resource "aws_lambda_function" "wake" {
   role          = aws_iam_role.wake_role[0].arn
   runtime       = "python3.12"
   handler       = "lambda_function.handler"
-
-  filename         = "${path.module}/wake.zip"
-  source_code_hash = filebase64sha256("${path.module}/wake.zip")
-
+  filename         = local.wake_zip_path
+  source_code_hash = local.wake_zip_hash
   timeout = 29
-
   environment {
     variables = {
       CLUSTER_NAME = aws_ecs_cluster.this.name
       SERVICE_NAME = aws_ecs_service.app.name
       APP_PORT     = tostring(var.app_port)
-      WAIT_MS      = "90000"
+      WAIT_MS      = "120000"
     }
   }
-
-  tags = { Project = var.project_name }
+  depends_on = [aws_iam_role_policy.wake_policy]
 }
 
 resource "aws_apigatewayv2_api" "wake" {
@@ -355,25 +344,6 @@ resource "aws_apigatewayv2_stage" "wake" {
   auto_deploy = true
 }
 
-output "wake_url" {
-  value       = try(aws_apigatewayv2_api.wake[0].api_endpoint, null)
-  description = "Public wake URL"
-}
-
-########################
-# Auto-Sleep: Lambda + EventBridge (каждую минуту)
-########################
-
-variable "enable_auto_sleep" {
-  type    = bool
-  default = true
-}
-
-variable "sleep_after_minutes" {
-  type    = number
-  default = 5
-}
-
 resource "aws_iam_role" "autosleep_role" {
   count = var.enable_auto_sleep ? 1 : 0
   name  = "${var.project_name}-autosleep-role"
@@ -397,15 +367,14 @@ resource "aws_iam_role_policy" "autosleep_policy" {
   })
 }
 
-# ZIP с кодом должен лежать рядом с main.tf как sleep.zip
 resource "aws_lambda_function" "autosleep" {
   count         = var.enable_auto_sleep ? 1 : 0
   function_name = "${var.project_name}-autosleep"
   role          = aws_iam_role.autosleep_role[0].arn
   runtime       = "python3.12"
   handler       = "auto_sleep.handler"
-  filename         = "${path.module}/sleep.zip"
-  source_code_hash = filebase64sha256("${path.module}/sleep.zip")
+  filename         = local.sleep_zip_path
+  source_code_hash = local.sleep_zip_hash
   timeout = 15
   environment {
     variables = {
@@ -414,16 +383,13 @@ resource "aws_lambda_function" "autosleep" {
       SLEEP_AFTER_MINUTES = tostring(var.sleep_after_minutes)
     }
   }
-  tags = { Project = var.project_name }
+  depends_on = [aws_iam_role_policy.autosleep_policy]
 }
 
 resource "aws_cloudwatch_event_rule" "autosleep" {
   count               = var.enable_auto_sleep ? 1 : 0
   name                = "${var.project_name}-autosleep"
-  description         = "Stop ECS service after N minutes if running"
   schedule_expression = "rate(1 minute)"
-  state               = "ENABLED"
-  tags                = { Project = var.project_name }
 }
 
 resource "aws_cloudwatch_event_target" "autosleep" {
@@ -440,4 +406,21 @@ resource "aws_lambda_permission" "events_invoke_autosleep" {
   function_name = aws_lambda_function.autosleep[0].function_name
   principal     = "events.amazonaws.com"
   source_arn    = aws_cloudwatch_event_rule.autosleep[0].arn
+}
+
+output "ecr_repository_url" {
+  value = aws_ecr_repository.this.repository_url
+}
+output "cluster_name" {
+  value = aws_ecs_cluster.this.name
+}
+output "service_name" {
+  value = aws_ecs_service.app.name
+}
+output "region" {
+  value = var.region
+}
+output "wake_url" {
+  value       = try(aws_apigatewayv2_api.wake[0].api_endpoint, null)
+  description = "Public wake URL"
 }

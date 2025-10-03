@@ -1,48 +1,36 @@
-# wake/auto_sleep.py
-import os, boto3
-from datetime import datetime, timezone, timedelta
-
-ecs = boto3.client("ecs")
+import os
+import time
+import boto3
 
 CLUSTER = os.environ["CLUSTER_NAME"]
 SERVICE = os.environ["SERVICE_NAME"]
 SLEEP_AFTER_MIN = int(os.environ.get("SLEEP_AFTER_MINUTES", "5"))
 
+ecs = boto3.client("ecs")
+
+
 def handler(event, context):
-    # 1) Проверяем сервис
-    svc = ecs.describe_services(cluster=CLUSTER, services=[SERVICE])["services"][0]
+    svc = ecs.describe_services(cluster=CLUSTER, services=[
+                                SERVICE])["services"][0]
     desired = svc.get("desiredCount", 0)
     running = svc.get("runningCount", 0)
 
-    # Если уже спит — ничего не делаем
-    if desired == 0 and running == 0:
-        return {"ok": True, "message": "Service already sleeping"}
+    if desired == 0 or running == 0:
+        return {"ok": True, "msg": "already stopped or no tasks"}
 
-    # 2) Берем раннящиеся таски и их startedAt
     tasks_arns = ecs.list_tasks(
-        cluster=CLUSTER,
-        serviceName=SERVICE,
-        desiredStatus="RUNNING"
-    ).get("taskArns", [])
-
+        cluster=CLUSTER, serviceName=SERVICE, desiredStatus="RUNNING").get("taskArns", [])
     if not tasks_arns:
-        # Нет RUNNING — можно усыпить на всякий
+        return {"ok": True, "msg": "no running tasks"}
+
+    tasks = ecs.describe_tasks(cluster=CLUSTER, tasks=tasks_arns)["tasks"]
+
+    now = time.time()
+    min_uptime = min([(now - t["startedAt"].timestamp()) /
+                     60 for t in tasks if "startedAt" in t], default=0)
+
+    if min_uptime >= SLEEP_AFTER_MIN:
         ecs.update_service(cluster=CLUSTER, service=SERVICE, desiredCount=0)
-        return {"ok": True, "action": "sleep", "reason": "No running tasks"}
+        return {"ok": True, "stopped": True, "uptime_min": round(min_uptime, 1)}
 
-    td = ecs.describe_tasks(cluster=CLUSTER, tasks=tasks_arns)
-    now = datetime.now(timezone.utc)
-    threshold = now - timedelta(minutes=SLEEP_AFTER_MIN)
-
-    # Если ЛЮБОЙ таск старше порога — усыпляем
-    for t in td.get("tasks", []):
-        started = t.get("startedAt")
-        if started and started < threshold:
-            ecs.update_service(cluster=CLUSTER, service=SERVICE, desiredCount=0)
-            return {
-                "ok": True,
-                "action": "sleep",
-                "reason": f"Task {t.get('taskArn')} startedAt={started.isoformat()} < {threshold.isoformat()}",
-            }
-
-    return {"ok": True, "message": "Still within active window"}
+    return {"ok": True, "skipped": True, "uptime_min": round(min_uptime, 1)}
