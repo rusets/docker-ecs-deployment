@@ -1,12 +1,12 @@
-🚀 docker-ecs-deployment
+🚀 Docker-ecs-deployment
 
-A fully automated scale-to-zero ECS Fargate deployment with on-demand wake-up and automatic sleep — built for minimal cost and clean architecture.
-	•	The app normally runs at $0 (desiredCount=0).
-	•	Hitting https://api.ecs-demo.online triggers a Wake Lambda via API Gateway.
-	•	Lambda scales the ECS service to 1 and redirects the user to the running task’s public IP.
-	•	When idle, an Auto-Sleep Lambda returns the service to 0.
+A fully automated scale-to-zero ECS Fargate deployment with on-demand wake-up and automatic sleep, built for minimal cost and clean architecture.
+	•	The app normally runs at $0 (desiredCount=0)
+	•	Hitting https://api.ecs-demo.online triggers the Wake Lambda via API Gateway
+	•	Lambda scales the ECS service to 1 and redirects the user to the running task’s public IP
+	•	After inactivity, the Auto-Sleep Lambda returns the service back to 0
 
-No ALB, no Route 53 hosted zone, no persistent compute.
+No ALB. No Route 53 hosted zone. No persistent compute.
 Only API Gateway + Lambda + ECS → optimized for the lowest possible AWS bill.
 
 ---
