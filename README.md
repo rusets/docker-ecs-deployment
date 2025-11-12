@@ -1,4 +1,4 @@
-🚀 Docker-ecs-deployment
+# 🚀 Docker-ecs-deployment
 
 A fully automated scale-to-zero ECS Fargate deployment with on-demand wake-up and automatic sleep, built for minimal cost and clean architecture.
 	•	The app normally runs at $0 (desiredCount=0)
