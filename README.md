@@ -84,15 +84,6 @@ flowchart LR
 
 ---
 
-## 🌐 DNS (optional)
-
-- Purchased domain: **`ecs-demo.online`** (example).  
-- A-record (apex) → **API Gateway custom domain** (if you attach one), *or* use the native **API endpoint**.  
-- The **wake URL** returns a “warming up” page and then **redirects** to the current task public IP.
-
-> For this demo, the public check URL you can share is: **https://ecs-demo.online** (fronts the wake API).
-
----
 
 ## ⚙️ Prerequisites
 
@@ -103,7 +94,6 @@ flowchart LR
 - **ECR** repository name (default): `ecs-demo-app`
 - **Terraform** 1.6+ (locally or via GitHub Actions)
 - **Docker** (to build/push images locally if needed)
-- **Route 53 / Namecheap** (optional, for domain)
 
 ---
 
@@ -221,7 +211,7 @@ CloudWatch logs confirm the autosleep action with the payload:
 
 ---
 
-🔒 Why the redirect uses HTTP
+## 🔒 Why the redirect uses HTTP
 
 After waking the ECS task, the Lambda redirects to the task’s public IP, which can only serve HTTP.
 HTTPS is terminated at API Gateway, but the container itself has no TLS certificate and no static endpoint.
@@ -229,7 +219,7 @@ Adding HTTPS on the container requires an ALB, which costs $16–$20/mo — brea
 
 ---
 
-💰 Cost notes
+## 💰 Cost notes
 	•	Idle: ECS/Fargate = $0 (service sleeps at desiredCount=0).
 You only pay small amounts for:
 	•	Lambda invocations (wake + auto-sleep)
