@@ -1,6 +1,26 @@
+# Dependencies & logs
 node_modules
 npm-debug.log*
+yarn-error.log*
+
+# Local / OS junk
 .DS_Store
+Thumbs.db
+
+# Git metadata
 .git
 .gitignore
+
+# Terraform / infra not needed in container
+infra/
+terraform.tfstate*
+.terraform/
+
+# Build & cache artifacts
+dist/
+build/
+*.zip
+
+# Docker build context
 Dockerfile
+docker-compose.yml
