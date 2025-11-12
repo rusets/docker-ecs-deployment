@@ -230,8 +230,9 @@ You only pay small amounts for:
 
 ---
 
-## 🆘 Troubleshooting
 
+
+##  🆘 Troubleshooting
 	•	Waiting page loops forever
 Increase WAIT_MS to 120000–180000.
 	•	Redirect shows private IP
@@ -242,6 +243,9 @@ Check API Gateway → Custom domain → Mapping must be $default.
 Validate DNS CNAME propagation.
 	•	Destroy fails
 Remove API Mapping → Remove Custom Domain → destroy.
+
+⸻
+
 
 ---
 
