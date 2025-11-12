@@ -233,23 +233,16 @@ You only pay small amounts for:
 ## 🆘 Troubleshooting
 
 	•	Waiting page loops forever
-Your ECS task is taking longer to start.
-Increase WAIT_MS (Wake Lambda env var) to 120000–180000 ms.
-	•	Redirect shows a private IP instead of public
-Make sure the ECS service runs in a public subnet and
-assign_public_ip = "ENABLED" (already configured in this repo).
-Custom domain returns 403 / 404
-Check API Gateway → Custom domain names:
-Ensure the API mapping is set to $default stage.
+Increase WAIT_MS to 120000–180000.
+	•	Redirect shows private IP
+Ensure public subnets + assign_public_ip = "ENABLED".
+	•	Custom domain returns 403/404
+Check API Gateway → Custom domain → Mapping must be $default.
 	•	Certificate stuck in Pending validation
-Means the CNAME hasn’t propagated.
-Verify the validation CNAME exists:
-dig +short _<token>.api.ecs-demo.online CNAME
-Destroy fails on API Gateway domain
-If using manual custom domain:
-	•	Delete API Mapping
-	•	Delete Custom Domain
-	•	Then destroy infrastructure
+Validate DNS CNAME propagation.
+	•	Destroy fails
+Remove API Mapping → Remove Custom Domain → destroy.
+
 ---
 
 ## 🧹 Cleanup
