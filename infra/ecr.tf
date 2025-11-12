@@ -1,12 +1,10 @@
-# infra/ecr.tf
-#############################################
-# ECR (repo + lifecycle policy)
-#############################################
-
+############################################
+# ECR — Repository
+############################################
 resource "aws_ecr_repository" "this" {
   name                 = var.ecr_repo_name
-  image_tag_mutability = "MUTABLE" # allow retagging 'latest'
-  force_delete         = true      # destroy even if images remain
+  image_tag_mutability = "MUTABLE"
+  force_delete         = true
 
   image_scanning_configuration { scan_on_push = true }
   encryption_configuration { encryption_type = "AES256" }
@@ -14,7 +12,9 @@ resource "aws_ecr_repository" "this" {
   tags = { Project = var.project_name }
 }
 
-# Keep it clean: expire untagged, trim 'latest' images
+############################################
+# ECR — Lifecycle Policy
+############################################
 resource "aws_ecr_lifecycle_policy" "this" {
   repository = aws_ecr_repository.this.name
   policy = jsonencode({

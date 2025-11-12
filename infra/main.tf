@@ -1,36 +1,71 @@
+############################################
+# Auto-Sleep — EventBridge rule + Lambda
+# Purpose: scale ECS service to 0 after N minutes idle
+############################################
 
-
-#############################################
-# Auto-Sleep: EventBridge rule + Lambda
-# Scales service back to 0 after N minutes idle
-#############################################
-
-# Role for the auto-sleep Lambda
+############################################
+# IAM Role — execution role for Auto-Sleep Lambda
+# Allows Lambda to assume role and access ECS + Logs
+############################################
 resource "aws_iam_role" "autosleep_role" {
   count = var.enable_auto_sleep ? 1 : 0
   name  = "${var.project_name}-autosleep-role"
+
   assume_role_policy = jsonencode({
-    Version   = "2012-10-17",
-    Statement = [{ Effect = "Allow", Principal = { Service = "lambda.amazonaws.com" }, Action = "sts:AssumeRole" }]
+    Version = "2012-10-17",
+    Statement = [
+      {
+        Effect    = "Allow",
+        Principal = { Service = "lambda.amazonaws.com" },
+        Action    = "sts:AssumeRole"
+      }
+    ]
   })
-  tags = { Project = var.project_name }
+
+  tags = {
+    Project = var.project_name
+  }
 }
 
-# Inline permissions for auto-sleep Lambda
+############################################
+# IAM Inline Policy — ECS and CloudWatch access
+# Grants Lambda ability to read ECS status and scale services
+############################################
 resource "aws_iam_role_policy" "autosleep_policy" {
   count = var.enable_auto_sleep ? 1 : 0
   name  = "${var.project_name}-autosleep-inline"
   role  = aws_iam_role.autosleep_role[0].id
+
   policy = jsonencode({
     Version = "2012-10-17",
     Statement = [
-      { Effect = "Allow", Action = ["ecs:DescribeServices", "ecs:ListTasks", "ecs:DescribeTasks", "ecs:UpdateService"], Resource = "*" },
-      { Effect = "Allow", Action = ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents"], Resource = "*" }
+      {
+        Effect = "Allow",
+        Action = [
+          "ecs:DescribeServices",
+          "ecs:ListTasks",
+          "ecs:DescribeTasks",
+          "ecs:UpdateService"
+        ],
+        Resource = "*"
+      },
+      {
+        Effect = "Allow",
+        Action = [
+          "logs:CreateLogGroup",
+          "logs:CreateLogStream",
+          "logs:PutLogEvents"
+        ],
+        Resource = "*"
+      }
     ]
   })
 }
 
-# Auto-sleep Lambda (Python). Zip must exist: ./sleep.zip (contains auto_sleep.py)
+############################################
+# Lambda Function — Auto-Sleep logic (Python)
+# Checks ECS service every minute and scales down if idle
+############################################
 resource "aws_lambda_function" "autosleep" {
   count         = var.enable_auto_sleep ? 1 : 0
   function_name = "${var.project_name}-autosleep"
@@ -40,8 +75,8 @@ resource "aws_lambda_function" "autosleep" {
 
   filename         = local.sleep_zip_path
   source_code_hash = local.sleep_zip_hash
+  timeout          = 15
 
-  timeout = 15
   environment {
     variables = {
       CLUSTER_NAME        = aws_ecs_cluster.this.name
@@ -49,17 +84,26 @@ resource "aws_lambda_function" "autosleep" {
       SLEEP_AFTER_MINUTES = tostring(var.sleep_after_minutes)
     }
   }
-  depends_on = [aws_iam_role_policy.autosleep_policy]
+
+  depends_on = [
+    aws_iam_role_policy.autosleep_policy
+  ]
 }
 
-# EventBridge: run every minute to check if service should sleep
+############################################
+# EventBridge Rule — periodic trigger
+# Executes Auto-Sleep Lambda every minute
+############################################
 resource "aws_cloudwatch_event_rule" "autosleep" {
   count               = var.enable_auto_sleep ? 1 : 0
   name                = "${var.project_name}-autosleep"
   schedule_expression = "rate(1 minute)"
 }
 
-# Connect rule -> Lambda target
+############################################
+# EventBridge Target — link to Lambda
+# Connects scheduled rule to Auto-Sleep function
+############################################
 resource "aws_cloudwatch_event_target" "autosleep" {
   count     = var.enable_auto_sleep ? 1 : 0
   rule      = aws_cloudwatch_event_rule.autosleep[0].name
@@ -67,7 +111,10 @@ resource "aws_cloudwatch_event_target" "autosleep" {
   arn       = aws_lambda_function.autosleep[0].arn
 }
 
-# Allow EventBridge to invoke the auto-sleep Lambda
+############################################
+# Lambda Permission — EventBridge invocation
+# Allows EventBridge rule to invoke the Auto-Sleep Lambda
+############################################
 resource "aws_lambda_permission" "events_invoke_autosleep" {
   count         = var.enable_auto_sleep ? 1 : 0
   statement_id  = "AllowEventBridgeInvoke"
@@ -76,4 +123,3 @@ resource "aws_lambda_permission" "events_invoke_autosleep" {
   principal     = "events.amazonaws.com"
   source_arn    = aws_cloudwatch_event_rule.autosleep[0].arn
 }
-

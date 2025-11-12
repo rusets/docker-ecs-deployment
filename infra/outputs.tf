@@ -18,7 +18,6 @@ output "region" {
   value = var.region
 }
 
-# Open this URL to wake service and auto-redirect to task IP
 output "wake_url" {
   value       = try(aws_apigatewayv2_api.wake[0].api_endpoint, null)
   description = "Public HTTP API URL to wake the ECS service."

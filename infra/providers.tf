@@ -14,7 +14,6 @@ terraform {
 }
 
 
-# Default AWS region comes from var.region
 provider "aws" {
   region = var.region
 }

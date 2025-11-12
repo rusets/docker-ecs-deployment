@@ -1,14 +1,13 @@
-# infra/ecs.tf
-#############################################
-# ECS Cluster, Roles, Task Definition, Service
-#############################################
-
-# Plain ECS cluster
+############################################
+# ECS — Cluster
+############################################
 resource "aws_ecs_cluster" "this" {
   name = "${var.project_name}-cluster"
 }
 
-# Execution role: ECS agent needs this to pull from ECR, write logs
+############################################
+# IAM — Execution Role for ECS Tasks
+############################################
 resource "aws_iam_role" "ecs_execution_role" {
   name = "${var.project_name}-ecs-exec-role"
   assume_role_policy = jsonencode({
@@ -22,20 +21,26 @@ resource "aws_iam_role" "ecs_execution_role" {
   tags = { Project = var.project_name }
 }
 
-# Attach AWS-managed policy for ECS execution
+############################################
+# IAM — Attach Execution Policy
+############################################
 resource "aws_iam_role_policy_attachment" "ecs_exec_policy" {
   role       = aws_iam_role.ecs_execution_role.name
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
 }
 
-# Task role (app’s own AWS permissions). Empty by default.
+############################################
+# IAM — Task Role (App Permissions)
+############################################
 resource "aws_iam_role" "ecs_task_role" {
   name               = "${var.project_name}-ecs-task-role"
   assume_role_policy = aws_iam_role.ecs_execution_role.assume_role_policy
   tags               = { Project = var.project_name }
 }
 
-# Fargate task definition (ARM64 to save cost on Graviton)
+############################################
+# ECS — Task Definition (Fargate, ARM64)
+############################################
 resource "aws_ecs_task_definition" "app" {
   family                   = "${var.project_name}-task"
   requires_compatibilities = ["FARGATE"]
@@ -45,7 +50,6 @@ resource "aws_ecs_task_definition" "app" {
   execution_role_arn       = aws_iam_role.ecs_execution_role.arn
   task_role_arn            = aws_iam_role.ecs_task_role.arn
 
-  # Single container: pulls :latest tag from ECR repo
   container_definitions = jsonencode([
     {
       name      = "app",
@@ -69,34 +73,34 @@ resource "aws_ecs_task_definition" "app" {
 
   runtime_platform {
     operating_system_family = "LINUX"
-    cpu_architecture        = "ARM64" # Graviton2/3 (cheaper)
+    cpu_architecture        = "ARM64"
   }
 
   tags = { Project = var.project_name }
 }
 
-# ECS service on Fargate with public IP (no ALB; connect directly to task ENI)
+############################################
+# ECS — Service (Public ENI, No ALB)
+############################################
 resource "aws_ecs_service" "app" {
   name            = "${var.project_name}-svc"
   cluster         = aws_ecs_cluster.this.id
   task_definition = aws_ecs_task_definition.app.arn
-  desired_count   = var.desired_count # 0 by default (idle)
+  desired_count   = var.desired_count
   launch_type     = "FARGATE"
   propagate_tags  = "SERVICE"
 
   network_configuration {
     subnets          = module.vpc.public_subnets
     security_groups  = [aws_security_group.service.id]
-    assign_public_ip = true # attach public IP to task ENI
+    assign_public_ip = true
   }
 
-  # Safer rolling update with circuit breaker auto-rollback
   deployment_circuit_breaker {
     enable   = true
     rollback = true
   }
 
-  # Don’t recreate service on each TD revision; we update explicitly
   lifecycle {
     ignore_changes = [task_definition]
   }

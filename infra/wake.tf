@@ -1,25 +1,27 @@
-# infra/wake.tf
-#############################################
-# Wake-on-request: API Gateway (HTTP) + Lambda
-# Hitting the URL scales service to 1 and redirects to task IP
-#############################################
 
-# Lambda execution role for "wake" (ECS read/update + Logs)
+############################################
+# IAM Role — execution role for Wake Lambda (ECS read/update + Logs)
+############################################
 resource "aws_iam_role" "wake_role" {
   count = var.enable_wake_api ? 1 : 0
   name  = "wake-ecs-role"
+
   assume_role_policy = jsonencode({
     Version   = "2012-10-17",
     Statement = [{ Effect = "Allow", Principal = { Service = "lambda.amazonaws.com" }, Action = "sts:AssumeRole" }]
   })
+
   tags = { Project = var.project_name }
 }
 
-# Inline permissions for wake Lambda
+############################################
+# IAM Inline Policy — permissions for ECS inspect/scale and logging
+############################################
 resource "aws_iam_role_policy" "wake_policy" {
   count = var.enable_wake_api ? 1 : 0
   name  = "wake-ecs-inline"
   role  = aws_iam_role.wake_role[0].id
+
   policy = jsonencode({
     Version = "2012-10-17",
     Statement = [
@@ -30,7 +32,9 @@ resource "aws_iam_role_policy" "wake_policy" {
   })
 }
 
-# Wake Lambda (Python). Zip must exist: ./wake.zip (contains lambda_function.py)
+############################################
+# Lambda Function — Wake handler (Python 3.12, proxy-integrated)
+############################################
 resource "aws_lambda_function" "wake" {
   count         = var.enable_wake_api ? 1 : 0
   function_name = "${var.project_name}-wake"
@@ -38,29 +42,35 @@ resource "aws_lambda_function" "wake" {
   runtime       = "python3.12"
   handler       = "lambda_function.handler"
 
-  filename         = local.wake_zip_path # local path to zip
-  source_code_hash = local.wake_zip_hash # forces update on zip change
+  filename         = local.wake_zip_path
+  source_code_hash = local.wake_zip_hash
 
-  timeout = 29 # ~30s hard limit on HTTP API
+  timeout = 29
+
   environment {
     variables = {
       CLUSTER_NAME = aws_ecs_cluster.this.name
       SERVICE_NAME = aws_ecs_service.app.name
       APP_PORT     = tostring(var.app_port)
-      WAIT_MS      = "120000" # total retry budget across refreshes
+      WAIT_MS      = "120000"
     }
   }
-  depends_on = [aws_iam_role_policy.wake_policy] # ensure policies exist first
+
+  depends_on = [aws_iam_role_policy.wake_policy]
 }
 
-# HTTP API for the wake endpoint (no custom domain here)
+############################################
+# API Gateway (HTTP API) — Wake endpoint API
+############################################
 resource "aws_apigatewayv2_api" "wake" {
   count         = var.enable_wake_api ? 1 : 0
   name          = "${var.project_name}-wake"
   protocol_type = "HTTP"
 }
 
-# Proxy integration to Lambda (HTTP API v2)
+############################################
+# API Integration — Lambda proxy (payload v2.0)
+############################################
 resource "aws_apigatewayv2_integration" "wake" {
   count                  = var.enable_wake_api ? 1 : 0
   api_id                 = aws_apigatewayv2_api.wake[0].id
@@ -69,7 +79,9 @@ resource "aws_apigatewayv2_integration" "wake" {
   payload_format_version = "2.0"
 }
 
-# Single route: GET /
+############################################
+# API Route — GET /
+############################################
 resource "aws_apigatewayv2_route" "wake" {
   count     = var.enable_wake_api ? 1 : 0
   api_id    = aws_apigatewayv2_api.wake[0].id
@@ -77,7 +89,9 @@ resource "aws_apigatewayv2_route" "wake" {
   target    = "integrations/${aws_apigatewayv2_integration.wake[0].id}"
 }
 
-# Allow API Gateway to invoke the Lambda
+############################################
+# Lambda Permission — allow API Gateway to invoke Wake Lambda
+############################################
 resource "aws_lambda_permission" "apigw_invoke" {
   count         = var.enable_wake_api ? 1 : 0
   statement_id  = "AllowInvokeByAPIGW"
@@ -87,8 +101,9 @@ resource "aws_lambda_permission" "apigw_invoke" {
   source_arn    = "${aws_apigatewayv2_api.wake[0].execution_arn}/*/*"
 }
 
-# Use $default stage with auto_deploy for simple URL like:
-# https://{api_id}.execute-api.{region}.amazonaws.com
+############################################
+# API Stage — $default with auto-deploy for simple base URL
+############################################
 resource "aws_apigatewayv2_stage" "wake" {
   count       = var.enable_wake_api ? 1 : 0
   api_id      = aws_apigatewayv2_api.wake[0].id

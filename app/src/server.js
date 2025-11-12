@@ -1,31 +1,25 @@
-// app/src/server.js
-// Minimal Express app that serves a small dashboard, exposes a few demo actions,
-// streams in-process logs via Server-Sent Events (SSE), and surfaces ECS metadata.
+############################################
+# app/src/server.js — Minimal dashboard API/UI
+# Purpose: Express app with metrics, SSE logs, demo actions, inline UI
+############################################
 
 const express = require('express');
 const os = require('os');
 
 const app = express();
-// App listens on PORT (default 80 for Fargate). Keep this matching your task def.
 const PORT = Number(process.env.PORT || 80);
 
-app.use(express.json()); // enable JSON body parsing
+app.use(express.json());
 
-// --------- Config & runtime info ----------
-// Track process start (used to compute uptime in /api/metrics)
 const startedAt = Date.now();
 
-// Immutable info we show in UI/metrics. Values can be injected via env.
 const INFO = {
   appName: process.env.APP_NAME || 'Ruslan AWS 🚀',
   env: process.env.APP_ENV || 'prod',
   version: process.env.APP_VERSION || '1.0.0',
-  // Try several CI image/version vars; fall back to 'unknown'
   gitSha: process.env.GIT_SHA || process.env.IMAGE_SHA || process.env.GITHUB_SHA || 'unknown',
 };
 
-// --------- In-memory state & logs ----------
-// Simple demo counters/state for the action buttons on the page.
 const STATE = {
   deploys: 0,
   scaled: 1,
@@ -34,36 +28,24 @@ const STATE = {
   lastAction: null,
 };
 
-// Ring buffer for recent logs that we expose via API and stream via SSE.
 const LOGS = [];
 const MAX_LOGS = 500;
-// Set of open SSE client response objects; we broadcast new logs to them.
 const clients = new Set();
 
-/**
- * Append a log entry to memory and broadcast it to connected SSE clients.
- * @param {'info'|'warn'|'error'|'action'} level
- * @param {string} msg
- * @param {object} extra - Extra fields merged into the log entry
- */
 function pushLog(level, msg, extra = {}) {
   const entry = { ts: new Date().toISOString(), level, msg, ...extra };
   LOGS.push(entry);
   if (LOGS.length > MAX_LOGS) LOGS.shift();
-
-  // Broadcast as SSE "log" event
   const data = `event: log\ndata: ${JSON.stringify(entry)}\n\n`;
   for (const res of clients) {
-    try { res.write(data); } catch (_) { /* ignore broken pipes */ }
+    try { res.write(data); } catch (_) {}
   }
 }
 
-// Show whether we run inside AWS task (via AWS_EXECUTION_ENV) or locally
 function getEcsMetaEnvHint() {
   return process.env.AWS_EXECUTION_ENV ? 'running on AWS (Fargate/ECS)' : 'local/docker';
 }
 
-// Quick local process/system metrics (used by /api/metrics)
 function getLocalMetrics() {
   const mem = process.memoryUsage();
   return {
@@ -79,14 +61,11 @@ function getLocalMetrics() {
   };
 }
 
-// Periodic heartbeat so the UI/log stream stays lively (every 15s).
 setInterval(() => {
   const m = getLocalMetrics();
   pushLog('info', 'heartbeat', { uptimeSec: m.uptimeSec, rssMB: m.rssMB, heapMB: m.heapUsedMB, load: m.loadAvg });
 }, 15000);
 
-// --------- ECS metadata (best-effort) ----------
-// If running on ECS with task metadata endpoint, fetch task/container info.
 async function getEcsMetadata() {
   try {
     const base = process.env.ECS_CONTAINER_METADATA_URI_V4 || process.env.ECS_CONTAINER_METADATA_URI;
@@ -101,12 +80,8 @@ async function getEcsMetadata() {
   }
 }
 
-// --------- API ----------
-
-// Simple health endpoint used by Dockerfile's HEALTHCHECK and UI
 app.get('/health', (_req, res) => res.status(200).send('OK'));
 
-// Combined metrics endpoint: app info, local process stats, and optional ECS metadata
 app.get('/api/metrics', async (_req, res) => {
   const ecs = await getEcsMetadata();
   res.json({
@@ -124,39 +99,27 @@ app.get('/api/metrics', async (_req, res) => {
   });
 });
 
-// Last 200 log entries (JSON fallback if not using SSE)
 app.get('/api/logs', (_req, res) => {
   res.json(LOGS.slice(-200));
 });
 
-// Live log stream via Server-Sent Events (EventSource in the UI)
 app.get('/api/logs/stream', (req, res) => {
-  // SSE headers
   res.set({
     'Content-Type': 'text/event-stream',
     'Cache-Control': 'no-cache, no-transform',
     'Connection': 'keep-alive',
   });
   res.flushHeaders();
-
-  // Register this client
   clients.add(res);
-
-  // On connect, send a snapshot of recent logs
   const snapshot = LOGS.slice(-100);
   res.write(`event: snapshot\ndata: ${JSON.stringify(snapshot)}\n\n`);
-
-  // Keep-alive comments every 10s
   const hb = setInterval(() => res.write(': ping\n\n'), 10000);
-
-  // Cleanup on disconnect
   req.on('close', () => {
     clearInterval(hb);
     clients.delete(res);
   });
 });
 
-// Demo action endpoint powering the buttons in the UI
 app.post('/action', (req, res) => {
   const a = (req.body?.action || '').toLowerCase();
   switch (a) {
@@ -165,43 +128,35 @@ app.post('/action', (req, res) => {
       STATE.lastAction = 'Deploy started';
       pushLog('action', 'deploy');
       return res.json({ ok: true, msg: 'Deploy started (demo)' });
-
     case 'scale_up':
       STATE.scaled += 1;
       STATE.lastAction = 'Scaled +1';
       pushLog('action', 'scale_up', { replicas: STATE.scaled });
       return res.json({ ok: true, msg: `Scaled up to ${STATE.scaled}` });
-
     case 'scale_down':
       STATE.scaled = Math.max(1, STATE.scaled - 1);
       STATE.lastAction = 'Scaled -1';
       pushLog('action', 'scale_down', { replicas: STATE.scaled });
       return res.json({ ok: true, msg: `Scaled down to ${STATE.scaled}` });
-
     case 'clear_cache':
       STATE.cacheClears += 1;
       STATE.lastAction = 'Cache cleared';
       pushLog('action', 'clear_cache');
       return res.json({ ok: true, msg: 'Cache cleared (demo)' });
-
     case 'rotate_keys':
       STATE.keyRotations += 1;
       STATE.lastAction = 'Keys rotated';
       pushLog('action', 'rotate_keys');
       return res.json({ ok: true, msg: 'Keys rotation triggered (demo)' });
-
     case 'p95_report':
       STATE.lastAction = 'P95 report generated';
       pushLog('action', 'p95_report');
       return res.json({ ok: true, msg: 'P95 latency report ready (demo)' });
-
     default:
       return res.status(400).json({ ok: false, msg: 'Unknown action' });
   }
 });
 
-// --------- Logo & Favicon (inline SVG) ----------
-// Small inline SVG used both as a logo and a favicon (resized)
 const LOGO_SVG = `
 <svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
   <defs>
@@ -219,19 +174,15 @@ const LOGO_SVG = `
 </svg>
 `.trim();
 
-// Serve logo.svg from memory
 app.get('/logo.svg', (_req, res) => {
   res.type('image/svg+xml').send(LOGO_SVG);
 });
 
-// Serve favicon as a tiny SVG (just a smaller version of the logo)
 app.get('/favicon.ico', (_req, res) => {
   const svg = LOGO_SVG.replace('width="128" height="128"', 'width="64" height="64"');
   res.type('image/svg+xml').send(svg);
 });
 
-// --------- UI (SSR) with theme toggle + live logs ----------
-// Single route handler that serves the dashboard HTML for all paths.
 app.get('*', (_req, res) => {
   res.type('html').send(`<!doctype html>
 <html lang="en" data-theme="dark">
@@ -241,7 +192,6 @@ app.get('*', (_req, res) => {
 <title>${INFO.appName}</title>
 <link rel="icon" href="/favicon.ico"/>
 <style>
-/* (all styles are inline so no static assets are required) */
 :root{
   --bg:#05060b; --panel:#0a0d17; --card:#0b1120; --muted:#93a3b8; --text:#e5eef9;
   --ring:#60a5fa; --glow:#22d3ee; --rgb1:#ff00ea; --rgb2:#00e5ff; --rgb3:#00ff88;
@@ -250,7 +200,6 @@ app.get('*', (_req, res) => {
   --bg:#f7fafc; --panel:#ffffff; --card:#f8fafc; --muted:#4b5563; --text:#0b1220;
   --ring:#2563eb; --glow:#06b6d4; --rgb1:#7c3aed; --rgb2:#06b6d4; --rgb3:#22c55e;
 }
-
 *{box-sizing:border-box}
 html,body{height:100%}
 body{
@@ -262,8 +211,6 @@ body{
 :root[data-theme="light"] body{
   background: linear-gradient(180deg,#ffffff, #eef2ff);
 }
-
-/* animated rgb aurora (hidden in light mode) */
 body::before, body::after{
   content:""; position:fixed; inset:-20%;
   filter:blur(40px); opacity:.35; pointer-events:none; mix-blend-mode:screen;
@@ -275,10 +222,8 @@ body::before, body::after{
 }
 :root[data-theme="light"] body::before,
 :root[data-theme="light"] body::after{ display:none; }
-
 body::after{ animation-duration: 26s; opacity:.25; transform: rotate(10deg); }
 @keyframes float{ 0%{transform:translateY(0)} 50%{transform:translateY(2%)} 100%{transform:translateY(0)} }
-
 header{
   position:sticky; top:0; z-index:10; padding:18px 16px;
   background:
@@ -292,15 +237,12 @@ header{
   box-shadow: 0 8px 24px rgba(0,0,0,.08); border-bottom: 1px solid rgba(0,0,0,.06);
 }
 @keyframes rgbbar{ 0%{background-position: 0 0, 0 0} 50%{background-position: 0 0, 100% 0} 100%{background-position: 0 0, 0 0} }
-
 .hbar{display:flex;align-items:center;gap:14px;max-width:1180px;margin:0 auto;padding:0 10px}
 h1{margin:0;font-size:22px;letter-spacing:.3px}
 .logo{width:28px;height:28px;vertical-align:middle}
-
 .wrap{max-width:1180px;margin:24px auto;padding:0 18px}
 .grid{display:grid;grid-template-columns:2fr 1fr;gap:18px}
 @media (max-width:1020px){ .grid{grid-template-columns:1fr} }
-
 .panel{
   background: linear-gradient(180deg, rgba(255,255,255,.07), rgba(255,255,255,.02));
   border: 1px solid rgba(255,255,255,.08); border-radius: 16px;
@@ -310,18 +252,14 @@ h1{margin:0;font-size:22px;letter-spacing:.3px}
 :root[data-theme="light"] .panel{
   background:#fff; border:1px solid rgba(0,0,0,.06); box-shadow: 0 6px 24px rgba(0,0,0,.08);
 }
-
 .card{margin-top:14px;background:linear-gradient(180deg,rgba(255,255,255,.05),rgba(255,255,255,.02));
   border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:14px}
 :root[data-theme="light"] .card{background:#fff;border:1px solid rgba(0,0,0,.06)}
-
 .badge{padding:6px 10px;border-radius:999px;background:rgba(9,10,18,.85);
   border:1px solid rgba(255,255,255,.08);font-size:12px;color:var(--muted)}
 :root[data-theme="light"] .badge{background:#f8fafc;border:1px solid rgba(0,0,0,.06);color:#334155}
-
 .muted{color:var(--muted)}
 .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
-
 .btn{padding:12px 14px;border-radius:12px;border:1px solid rgba(255,255,255,.08);
   background: radial-gradient(120% 180% at 0% 0%, rgba(255,255,255,.05), rgba(255,255,255,.02));
   color:var(--text);font-weight:800;letter-spacing:.3px;cursor:pointer;
@@ -330,14 +268,12 @@ h1{margin:0;font-size:22px;letter-spacing:.3px}
 }
 .btn:hover{transform:translateY(-3px) scale(1.01);border-color: rgba(96,165,250,.55);filter: drop-shadow(0 0 12px rgba(96,165,250,.35))}
 :root[data-theme="light"] .btn{text-shadow:none; box-shadow: 0 6px 18px rgba(0,0,0,.06)}
-
 .kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
 .kpi{padding:12px;border-radius:12px;background:linear-gradient(180deg,rgba(255,255,255,.05),rgba(255,255,255,.02));
   border:1px solid rgba(255,255,255,.08)}
 :root[data-theme="light"] .kpi{background:#fff;border:1px solid rgba(0,0,0,.06)}
 .kpi .v{font-size:20px;font-weight:900}
 .kpi .t{font-size:12px;color:var(--muted)}
-
 pre{white-space:pre-wrap;word-break:break-word;background:#070a14;border:1px solid rgba(255,255,255,.08);
   padding:12px;border-radius:12px;max-height:360px;overflow:auto}
 :root[data-theme="light"] pre{background:#f8fafc;border:1px solid rgba(0,0,0,.06)}
@@ -409,7 +345,6 @@ pre{white-space:pre-wrap;word-break:break-word;background:#070a14;border:1px sol
 </div>
 
 <script>
-// Theme toggle with localStorage persistence
 const root = document.documentElement;
 const savedTheme = localStorage.getItem('theme');
 if (savedTheme) root.setAttribute('data-theme', savedTheme);
@@ -419,7 +354,6 @@ document.getElementById('theme').onclick = () => {
   localStorage.setItem('theme', t);
 };
 
-// Health + metrics UI updaters
 async function pingHealth(){
   try {
     const r = await fetch('/health', {cache:'no-store'});
@@ -440,7 +374,6 @@ async function loadMetrics(){
   document.getElementById('host').textContent = sys.hostname || '—';
 }
 
-// Buttons -> POST /action
 async function sendAction(action){
   const r = await fetch('/action', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({action})});
   const j = await r.json();
@@ -451,7 +384,6 @@ document.querySelectorAll('.btn[data-action]').forEach(b=>{
   b.addEventListener('click', ()=> sendAction(b.dataset.action));
 });
 
-// Log viewer (SSE)
 function appendLog(line){
   const el = document.getElementById('logs');
   const s = typeof line === 'string' ? line : JSON.stringify(line);
@@ -481,8 +413,6 @@ connectLogs();
 </html>`);
 });
 
-// --------- start ----------
-// Start the HTTP server; write an initial structured log entry.
 app.listen(PORT, () => {
   pushLog('info', `${INFO.appName} starting`, { env: INFO.env, version: INFO.version, git: INFO.gitSha, where: getEcsMetaEnvHint() });
   console.log(`Server listening on ${PORT}`);
