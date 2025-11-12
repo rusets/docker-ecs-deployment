@@ -220,20 +220,18 @@ Adding HTTPS on the container requires an ALB, which costs $16–$20/mo — brea
 ---
 
 ## 💰 Cost notes
-
 	•	Idle: ECS/Fargate = $0 (service sleeps at desiredCount=0).
 
 You only pay small amounts for:
--	•	Lambda invocations (wake + auto-sleep)
--	•	API Gateway HTTP API (low cost)
--	•	CloudWatch Logs (minimal retention)
--	•	S3 + DynamoDB for Terraform backend
--	•	Active: cost of a single Fargate task (0.25 vCPU / 0.5 GB), only while running
-  
----
+	•	Lambda invocations (wake + auto-sleep)
+	•	API Gateway HTTP API (low cost)
+	•	CloudWatch Logs (minimal retention)
+	•	S3 + DynamoDB for Terraform backend
+	•	Active: cost of a single Fargate task (0.25 vCPU / 0.5 GB), only while running
+
+⸻
 
 ## 🆘 Troubleshooting
-
 	•	Waiting page loops forever
 Increase WAIT_MS to 120000–180000 ms.
 	•	Redirect shows private IP
