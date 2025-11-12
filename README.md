@@ -219,7 +219,8 @@ Adding HTTPS on the container requires an ALB, which costs $16–$20/mo — brea
 
 ---
 
-💰 Cost notes
+##💰 Cost notes
+
 	•	Idle: ECS/Fargate = $0 (service sleeps at desiredCount=0).
 
 You only pay small amounts for:
@@ -231,7 +232,8 @@ You only pay small amounts for:
 
 ⸻
 
-🆘 Troubleshooting
+##🆘 Troubleshooting
+
 	•	Waiting page loops forever
 Increase WAIT_MS to 120000–180000 ms.
 	•	Redirect shows private IP
