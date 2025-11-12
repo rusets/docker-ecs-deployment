@@ -42,7 +42,7 @@ Traffic goes to a **public task IP**, the service **auto-sleeps to 0**, and a sm
 └── make_zips.sh                        # Creates Lambda bundles: infra/wake.zip & infra/sleep.zip
 ```
 
-> If you only keep **`infra/main.tf`**, that’s fine — this repo is designed to work with just one TF file.
+
 
 ---
 
@@ -179,6 +179,40 @@ https://ecs-demo.online
 
 ---
 
+## 📸 Screenshots — Wake / Sleep Workflow
+
+### 1️⃣ Service Warming Up
+The initial wake sequence — the API Gateway triggers the **Lambda "Wake"**, which scales the ECS service from `desiredCount=0` to `1`.
+![Warming Up](docs/readme-screenshots/1-warming-up.png)
+
+---
+
+### 2️⃣ Application Running
+The application is now live and serving requests inside the **ECS Fargate** task.  
+Live metrics (uptime, memory, load average) are streamed to the UI dashboard.
+![App Running](docs/readme-screenshots/2-app-running.png)
+
+---
+
+### 3️⃣ ECS Service — Active
+AWS Console confirms that **1/1 tasks** are running and the service is fully active within the ECS cluster.  
+The cluster status is **Active**, no tasks are pending.
+![ECS Active](docs/readme-screenshots/3-ecs-service-awake.png)
+
+---
+
+### 4️⃣ ECS Service — Autosleep Triggered
+After idle timeout, the **Auto-Sleep Lambda** scales the ECS service back down to `desiredCount=0`.  
+This ensures cost-efficient operation by shutting down inactive containers.
+![ECS Sleeping](docs/readme-screenshots/4-ecs-service-sleep.png)
+
+---
+
+### 5️⃣ CloudWatch Logs — Autosleep Event
+CloudWatch logs confirm the autosleep action with the payload:  
+`{"ok": true, "stopped": true}` — indicating the ECS service has successfully stopped.
+![Autosleep Log](docs/readme-screenshots/5-autosleep-log.png)
+
 ## 💰 Cost notes
 
 - **Idle**: $0 for ECS/Fargate (desiredCount=0). You pay pennies for:
@@ -215,6 +249,8 @@ terraform destroy -auto-approve -input=false
 
 ---
 
-## 📝 License
+## 🧾 License
 
-MIT
+Released under the **MIT License** — feel free to use, fork, and learn from it.  
+© Ruslan Dashkin (🚀Ruslan AWS)
+Branding name “🚀Ruslan AWS” and related visuals are protected; commercial reuse or rebranding without permission is prohibited.
