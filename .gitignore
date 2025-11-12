@@ -1,17 +1,50 @@
+############################################
 # Terraform
+############################################
+.terraform/
 *.tfstate
 *.tfstate.*
-.terraform/
+terraform.tfstate
 .terraform.lock.hcl
+crash.log
+override.tf*
+tfplan
+*.tfplan
 
-# Lambda zips
-infra/wake.zip
-infra/sleep.zip
+############################################
+# Lambda build artifacts (zips)
+############################################
+infra/*.zip
 
-# Node
-node_modules/
-npm-debug.log
+############################################
+# Node.js (app/)
+############################################
+app/node_modules/
+npm-debug.log*
+yarn-error.log*
 
+############################################
 # Python
+############################################
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
+
+############################################
+# Build / dist artifacts
+############################################
+dist/
+build/
+infra/out.json
+infra/resp.json
+
+############################################
+# OS & editor junk
+############################################
+.DS_Store
+Thumbs.db
+.env
+*.swp
+*.bak
+*.tmp
