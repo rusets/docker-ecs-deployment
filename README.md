@@ -1,7 +1,13 @@
-# 🚀 docker-ecs-deployment
+🚀 docker-ecs-deployment
 
-Spin up a **zero-cost-at-idle** demo app on **AWS ECS Fargate** without an ALB.  
-Traffic goes to a **public task IP**, the service **auto-sleeps to 0**, and a small **“wake”** Lambda behind **API Gateway** starts it on demand. Domain: **https://ecs-demo.online**.
+A fully automated scale-to-zero ECS Fargate deployment with on-demand wake-up and automatic sleep — built for minimal cost and clean architecture.
+	•	The app normally runs at $0 (desiredCount=0).
+	•	Hitting https://api.ecs-demo.online triggers a Wake Lambda via API Gateway.
+	•	Lambda scales the ECS service to 1 and redirects the user to the running task’s public IP.
+	•	When idle, an Auto-Sleep Lambda returns the service to 0.
+
+No ALB, no Route 53 hosted zone, no persistent compute.
+Only API Gateway + Lambda + ECS → optimized for the lowest possible AWS bill.
 
 ---
 
@@ -213,27 +219,47 @@ CloudWatch logs confirm the autosleep action with the payload:
 `{"ok": true, "stopped": true}` — indicating the ECS service has successfully stopped.
 ![Autosleep Log](docs/readme-screenshots/5-autosleep-log.png)
 
-## 💰 Cost notes
+---
 
-- **Idle**: $0 for ECS/Fargate (desiredCount=0). You pay pennies for:
-  - Lambda invocations (wake/auto-sleep)
-  - API Gateway minimal traffic
-  - CloudWatch Logs
-  - S3+DynamoDB for Terraform backend
-  - Route 53 hosted zone (if used)
-- **Active**: Fargate task (0.25 vCPU / 0.5GB) while running.
+🔒 Why the redirect uses HTTP
+
+After waking the ECS task, the Lambda redirects to the task’s public IP, which can only serve HTTP.
+HTTPS is terminated at API Gateway, but the container itself has no TLS certificate and no static endpoint.
+Adding HTTPS on the container requires an ALB, which costs $16–$20/mo — breaking the project’s scale-to-zero design.
+
+---
+
+💰 Cost notes
+	•	Idle: ECS/Fargate = $0 (service sleeps at desiredCount=0).
+You only pay small amounts for:
+	•	Lambda invocations (wake + auto-sleep)
+	•	API Gateway HTTP API (very low-cost)
+	•	CloudWatch Logs (minimal retention)
+	•	S3 + DynamoDB for Terraform backend
+	•	Active: Cost of a single Fargate task (0.25 vCPU / 0.5 GB) only while running.
 
 ---
 
 ## 🆘 Troubleshooting
 
-- **Waiting page loops forever**  
-  Increase `WAIT_MS` in Lambda env (via Terraform) to 120–180 seconds.
-- **Private IP in redirect**  
-  Ensure **`assign_public_ip = true`** for the ECS service (already set).
-- **Destroy fails on API GW stage**  
-  If you attached a custom domain (Route 53), remove **base path mappings** first, or use `-target` destroys.
-
+	•	Waiting page loops forever
+Your ECS task is taking longer to start.
+Increase WAIT_MS (Wake Lambda env var) to 120000–180000 ms.
+	•	Redirect shows a private IP instead of public
+Make sure the ECS service runs in a public subnet and
+assign_public_ip = "ENABLED" (already configured in this repo).
+Custom domain returns 403 / 404
+Check API Gateway → Custom domain names:
+Ensure the API mapping is set to $default stage.
+	•	Certificate stuck in Pending validation
+Means the CNAME hasn’t propagated.
+Verify the validation CNAME exists:
+dig +short _<token>.api.ecs-demo.online CNAME
+Destroy fails on API Gateway domain
+If using manual custom domain:
+	•	Delete API Mapping
+	•	Delete Custom Domain
+	•	Then destroy infrastructure
 ---
 
 ## 🧹 Cleanup
