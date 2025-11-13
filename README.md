@@ -68,8 +68,8 @@ docker-ecs-deployment
 │   └── get-public-url.sh              # Helper script to fetch live task URL
 │
 ├── make_zips.sh                       # Bundles Lambdas into infra/*.zip
-├── README.md
-└── terraform.tfstate                  # Local state (ignored if using remote)
+└── README.md
+
 ```
 
 
