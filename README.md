@@ -40,7 +40,6 @@ docker-ecs-deployment
 │   └── src/
 │       └── server.js
 │
-├── autosleep/                         # Auto-sleep Lambda source (Python)
 │
 ├── wake/                              # Wake Lambda source (Python)
 │
