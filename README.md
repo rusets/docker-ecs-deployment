@@ -286,6 +286,6 @@ terraform destroy -auto-approve -input=false
 
 ## 🧾 License
 
-Released under the **MIT License** — feel free to use, fork, and learn from it.  
-© Ruslan Dashkin (🚀Ruslan AWS)
-Branding name “🚀Ruslan AWS” and related visuals are protected; commercial reuse or rebranding without permission is prohibited.
+- Released under the **MIT License** — feel free to use, fork, and learn from it.  
+- © Ruslan Dashkin (🚀Ruslan AWS)
+- Branding name “🚀Ruslan AWS” and related visuals are protected; commercial reuse or rebranding without permission is prohibited.
