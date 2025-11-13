@@ -31,22 +31,45 @@ Only API Gateway + Lambda + ECS → optimized for the lowest possible AWS bill.
 ## 🧭 Repository structure
 
 ```text
-.
+
+docker-ecs-deployment
 ├── app/
 │   ├── Dockerfile
+│   ├── package.json
+│   ├── package-lock.json
 │   └── src/
 │       └── server.js
-├── autosleep/
-│   └── auto_sleep.py                   # Lambda: auto-stop service after N minutes
-├── wake/
-│   └── lambda_function.py              # Lambda: scale-to-1 + redirect to task IP
-├── infra/
-│   └── main.tf                         # All Terraform in a single file
-├── .github/workflows/
-│   ├── ci.yml                          # CI — Build & Push to ECR
-│   ├── cd.yml                          # CD — Terraform Apply + Deploy/Destroy (ECS)
-│   └── ops.yml                         # OPS — Wake/Sleep ECS Service helpers
-└── make_zips.sh                        # Creates Lambda bundles: infra/wake.zip & infra/sleep.zip
+│
+├── autosleep/                         # Auto-sleep Lambda source (Python)
+│
+├── wake/                              # Wake Lambda source (Python)
+│
+├── infra/                             # All Terraform code
+│   ├── backend.tf                     # S3 + DynamoDB remote state backend
+│   ├── providers.tf                   # AWS provider + required versions
+│   ├── variables.tf                   # Input variables
+│   ├── locals.tf                      # Derived locals (paths, names)
+│   ├── networking.tf                  # VPC, subnets, security group
+│   ├── ecr.tf                         # ECR repository
+│   ├── ecs.tf                         # ECS cluster, task, service
+│   ├── logs.tf                        # CloudWatch logs setup
+│   ├── wake.tf                        # Wake Lambda + API Gateway
+│   ├── main.tf                        # High-level module wiring
+│   ├── outputs.tf                     # Terraform outputs
+│   ├── sleep.zip                      # Autosleep Lambda bundle (auto-built)
+│   ├── wake.zip                       # Wake Lambda bundle (auto-built)
+│   └── out.json / resp.json           # Temporary Terraform outputs (ignored)
+│
+├── docs/
+│   └── readme-screenshots/            # Images used inside README
+│
+├── scripts/
+│   ├── build-push.sh                  # Build & push Docker image to ECR
+│   └── get-public-url.sh              # Helper script to fetch live task URL
+│
+├── make_zips.sh                       # Bundles Lambdas into infra/*.zip
+├── README.md
+└── terraform.tfstate                  # Local state (ignored if using remote)
 ```
 
 
