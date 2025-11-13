@@ -55,10 +55,7 @@ docker-ecs-deployment
 │   ├── logs.tf                        # CloudWatch logs setup
 │   ├── wake.tf                        # Wake Lambda + API Gateway
 │   ├── main.tf                        # High-level module wiring
-│   ├── outputs.tf                     # Terraform outputs
-│   ├── sleep.zip                      # Autosleep Lambda bundle (auto-built)
-│   ├── wake.zip                       # Wake Lambda bundle (auto-built)
-│   └── out.json / resp.json           # Temporary Terraform outputs (ignored)
+│   └── outputs.tf                     # Terraform outputs
 │
 ├── docs/
 │   └── readme-screenshots/            # Images used inside README
