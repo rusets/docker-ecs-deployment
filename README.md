@@ -40,7 +40,6 @@ docker-ecs-deployment
 │   └── src/
 │       └── server.js
 │
-│
 ├── wake/                              # Wake Lambda source (Python)
 │
 ├── infra/                             # All Terraform code
