@@ -58,7 +58,8 @@ jobs:
       - name: Run tfsec
         uses: aquasecurity/tfsec-action@v1.0.3
         with:
-          working-directory: infra
+          working_directory: infra
+          github_token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Run Checkov
         uses: bridgecrewio/checkov-action@v12
