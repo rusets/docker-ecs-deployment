@@ -1,0 +1,9 @@
+skip-check:
+  - CKV_AWS_333    # ECS public IP assignment (intentional: scale-to-zero demo, no ALB/NAT)
+  - CKV_AWS_338    # CloudWatch retention < 1 year (cost optimization for demo)
+  - CKV_AWS_158    # CloudWatch without custom KMS key (default encryption is enough)
+  - CKV_AWS_136    # ECR without custom KMS key (default encryption OK)
+  - CKV_AWS_116    # No DLQ for lightweight demo Lambdas
+  - CKV_AWS_117    # Lambda not inside VPC (intentional: avoid NAT cost)
+  - CKV_AWS_173    # Lambda env variables without KMS encryption (no secrets stored)
+  - CKV_AWS_355    # IAM wildcard Resource for small demo policies
