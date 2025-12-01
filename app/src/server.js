@@ -278,7 +278,6 @@ pre{white-space:pre-wrap;word-break:break-word;background:#070a14;border:1px sol
 <body>
 <header>
   <div class="hbar">
-    <img class="logo" src="/logo.svg" alt="logo"/>
     <h1>${INFO.appName}</h1>
     <div style="flex:1"></div>
     <button id="theme" class="btn" style="width:auto;padding:8px 12px">Toggle theme</button>
