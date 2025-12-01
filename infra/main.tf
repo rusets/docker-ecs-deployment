@@ -138,4 +138,4 @@ resource "aws_lambda_permission" "events_invoke_autosleep" {
   principal     = "events.amazonaws.com"
   source_arn    = aws_cloudwatch_event_rule.autosleep[0].arn
 }
-# tiny trigger comment
+
