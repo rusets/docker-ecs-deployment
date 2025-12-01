@@ -56,7 +56,7 @@ jobs:
         working-directory: infra
 
       - name: Run tfsec
-        uses: aquasecurity/tfsec-action@v1
+        uses: aquasecurity/tfsec-action@v1.0.3
         with:
           working-directory: infra
 
