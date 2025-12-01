@@ -1,51 +1,37 @@
 ############################################
-# Terraform
+# Project Ignore Rules — Terraform, Lambda, App, IDE, OS
 ############################################
+
+# Terraform
 .terraform/
 *.tfstate
 *.tfstate.*
-terraform.tfstate
 .terraform.lock.hcl
 crash.log
 override.tf*
 tfplan
 *.tfplan
 
-############################################
-# Lambda build artifacts (zips)
-############################################
-infra/*.zip
+# Lambda / build artifacts (Terraform-generated)
+build/
+infra/out.json
+infra/resp.json
 
-############################################
-# Node.js (app/)
-############################################
+# Node.js app
 app/node_modules/
 npm-debug.log*
 yarn-error.log*
 
-############################################
 # Python
-############################################
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
 
-############################################
-# Build / dist artifacts
-############################################
-dist/
-build/
-infra/out.json
-infra/resp.json
-
-############################################
-# OS & editor junk
-############################################
+# IDE / Editor / OS junk
+.vscode/
 .DS_Store
 Thumbs.db
 .env
 *.swp
 *.bak
-*.tmpinfra/wake.zip
-infra/sleep.zip

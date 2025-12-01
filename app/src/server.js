@@ -1,7 +1,3 @@
-############################################
-# app/src/server.js — Minimal dashboard API/UI
-# Purpose: Express app with metrics, SSE logs, demo actions, inline UI
-############################################
 
 const express = require('express');
 const os = require('os');

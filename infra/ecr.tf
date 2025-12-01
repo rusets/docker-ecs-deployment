@@ -1,15 +1,23 @@
 ############################################
 # ECR — Repository
 ############################################
+#tfsec:ignore:aws-ecr-repository-customer-key
 resource "aws_ecr_repository" "this" {
   name                 = var.ecr_repo_name
-  image_tag_mutability = "MUTABLE"
+  image_tag_mutability = "IMMUTABLE"
   force_delete         = true
 
-  image_scanning_configuration { scan_on_push = true }
-  encryption_configuration { encryption_type = "AES256" }
+  image_scanning_configuration {
+    scan_on_push = true
+  }
 
-  tags = { Project = var.project_name }
+  encryption_configuration {
+    encryption_type = "AES256"
+  }
+
+  tags = {
+    Project = var.project_name
+  }
 }
 
 ############################################

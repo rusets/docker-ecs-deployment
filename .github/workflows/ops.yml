@@ -2,6 +2,7 @@ name: OPS — Wake/Sleep ECS Service
 
 on:
   workflow_dispatch:
+    # checkov:skip=CKV_GHA_7 reason: manual wake/sleep control for operator, not untrusted user input
     inputs:
       action:
         description: "wake = scale to 1; sleep = scale to 0"

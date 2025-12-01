@@ -15,19 +15,48 @@ resource "aws_iam_role" "wake_role" {
 }
 
 ############################################
-# IAM Inline Policy — permissions for ECS inspect/scale and logging
+# IAM Policy — Wake Lambda permissions
+# Purpose: Scale ECS service and inspect running tasks
 ############################################
 resource "aws_iam_role_policy" "wake_policy" {
-  count = var.enable_wake_api ? 1 : 0
-  name  = "wake-ecs-inline"
-  role  = aws_iam_role.wake_role[0].id
+  name = "${var.project_name}-wake-policy"
+  role = aws_iam_role.wake_role[0].id
 
   policy = jsonencode({
-    Version = "2012-10-17",
+    Version = "2012-10-17"
     Statement = [
-      { Effect = "Allow", Action = ["ecs:UpdateService", "ecs:DescribeServices", "ecs:ListTasks", "ecs:DescribeTasks"], Resource = "*" },
-      { Effect = "Allow", Action = ["ec2:DescribeNetworkInterfaces"], Resource = "*" },
-      { Effect = "Allow", Action = ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents"], Resource = "*" }
+      {
+        Sid    = "ManageEcsServiceFromWake"
+        Effect = "Allow"
+        Action = [
+          "ecs:DescribeServices",
+          "ecs:UpdateService"
+        ]
+        Resource = "arn:aws:ecs:${var.region}:${data.aws_caller_identity.current.account_id}:service/${aws_ecs_cluster.this.name}/${aws_ecs_service.app.name}"
+      },
+      {
+        Sid    = "InspectTasksForPublicIp"
+        Effect = "Allow"
+        Action = [
+          "ecs:ListTasks",
+          "ecs:DescribeTasks",
+          "ec2:DescribeNetworkInterfaces"
+        ]
+        Resource = "*"
+      },
+      {
+        Sid    = "WriteWakeLogs"
+        Effect = "Allow"
+        Action = [
+          "logs:CreateLogGroup",
+          "logs:CreateLogStream",
+          "logs:PutLogEvents"
+        ]
+        Resource = [
+          "arn:aws:logs:${var.region}:${data.aws_caller_identity.current.account_id}:log-group:/aws/lambda/${var.project_name}-wake",
+          "arn:aws:logs:${var.region}:${data.aws_caller_identity.current.account_id}:log-group:/aws/lambda/${var.project_name}-wake:*"
+        ]
+      }
     ]
   })
 }
@@ -42,8 +71,8 @@ resource "aws_lambda_function" "wake" {
   runtime       = "python3.12"
   handler       = "lambda_function.handler"
 
-  filename         = local.wake_zip_path
-  source_code_hash = local.wake_zip_hash
+  filename         = data.archive_file.wake_zip.output_path
+  source_code_hash = data.archive_file.wake_zip.output_base64sha256
 
   timeout = 29
 
@@ -54,6 +83,10 @@ resource "aws_lambda_function" "wake" {
       APP_PORT     = tostring(var.app_port)
       WAIT_MS      = "120000"
     }
+  }
+
+  tracing_config {
+    mode = "Active"
   }
 
   depends_on = [aws_iam_role_policy.wake_policy]
@@ -102,11 +135,25 @@ resource "aws_lambda_permission" "apigw_invoke" {
 }
 
 ############################################
-# API Stage — $default with auto-deploy for simple base URL
+# API Gateway Stage — wake default
+# Purpose: Enable access logging for wake API
 ############################################
 resource "aws_apigatewayv2_stage" "wake" {
   count       = var.enable_wake_api ? 1 : 0
   api_id      = aws_apigatewayv2_api.wake[0].id
   name        = "$default"
   auto_deploy = true
+
+  access_log_settings {
+    destination_arn = aws_cloudwatch_log_group.apigw_wake.arn
+    format = jsonencode({
+      requestId   = "$context.requestId"
+      httpMethod  = "$context.httpMethod"
+      path        = "$context.path"
+      status      = "$context.status"
+      ip          = "$context.identity.sourceIp"
+      userAgent   = "$context.identity.userAgent"
+      requestTime = "$context.requestTime"
+    })
+  }
 }

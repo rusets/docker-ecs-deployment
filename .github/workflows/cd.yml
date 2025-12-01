@@ -2,6 +2,7 @@ name: CD — Terraform Apply + Deploy/Destroy (ECS)
 
 on:
   workflow_dispatch:
+    # checkov:skip=CKV_GHA_7 reason: controlled deploy inputs (mode/imageTag) for operator, not general user data
     inputs:
       mode:
         description: "apply: deploy image and scale to 1; destroy: cleanup everything"
@@ -10,8 +11,8 @@ on:
         options: [apply, destroy]
         default: apply
       imageTag:
-        description: "Image tag to deploy (default: latest)"
-        required: false
+        description: "Image tag to deploy (immutable tag in ECR)"
+        required: true
         type: string
 
 env:
@@ -43,22 +44,6 @@ jobs:
         with:
           role-to-assume: arn:aws:iam::097635932419:role/github-actions-ecs-role
           aws-region: ${{ env.AWS_REGION }}
-
-      - name: Package Lambda zips
-        run: |
-          set -e
-          mkdir -p infra
-          if [ -f wake/lambda_function.py ]; then
-            (cd wake && zip -r ../infra/wake.zip lambda_function.py >/dev/null)
-          else
-            echo "wake/lambda_function.py not found, skipping wake.zip"
-          fi
-          if [ -f autosleep/auto_sleep.py ]; then
-            (cd autosleep && zip -r ../infra/sleep.zip auto_sleep.py >/dev/null)
-          else
-            echo "autosleep/auto_sleep.py not found, skipping sleep.zip"
-          fi
-          ls -l infra/*.zip || true
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
@@ -92,9 +77,8 @@ jobs:
           ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
           ECR_URL="${ACCOUNT_ID}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPOSITORY }}"
           TAG="${{ inputs.imageTag }}"
-          if [ -z "$TAG" ]; then TAG="latest"; fi
-          echo "ECR_URL=$ECR_URL" >> $GITHUB_OUTPUT
-          echo "TAG=$TAG"         >> $GITHUB_OUTPUT
+          echo "ECR_URL=$ECR_URL" >> "$GITHUB_OUTPUT"
+          echo "TAG=$TAG"         >> "$GITHUB_OUTPUT"
 
       - name: Assert image tag exists in ECR
         if: ${{ inputs.mode == 'apply' }}
@@ -160,7 +144,7 @@ jobs:
         id: svc
         run: |
           TD=$(aws ecs describe-services --cluster "${{ env.CLUSTER_NAME }}" --services "${{ env.SERVICE_NAME }}" --region "${{ env.AWS_REGION }}" --query "services[0].taskDefinition" --output text)
-          echo "td=$TD" >> $GITHUB_OUTPUT
+          echo "td=$TD" >> "$GITHUB_OUTPUT"
 
       - name: Download full TaskDefinition JSON
         if: ${{ inputs.mode == 'apply' }}
@@ -183,7 +167,7 @@ jobs:
         id: register
         run: |
           NEW_TD=$(aws ecs register-task-definition --region "${{ env.AWS_REGION }}" --cli-input-json file://register.json --query "taskDefinition.taskDefinitionArn" --output text)
-          echo "new=$NEW_TD" >> $GITHUB_OUTPUT
+          echo "new=$NEW_TD" >> "$GITHUB_OUTPUT"
 
       - name: Update Service & wait
         if: ${{ inputs.mode == 'apply' }}

@@ -28,34 +28,45 @@ resource "aws_iam_role" "autosleep_role" {
 }
 
 ############################################
-# IAM Inline Policy — ECS and CloudWatch access
-# Grants Lambda ability to read ECS status and scale services
+# IAM Policy — autosleep Lambda
+# Purpose: Logs + scale ECS service only for this cluster/service
 ############################################
 resource "aws_iam_role_policy" "autosleep_policy" {
   count = var.enable_auto_sleep ? 1 : 0
-  name  = "${var.project_name}-autosleep-inline"
   role  = aws_iam_role.autosleep_role[0].id
+  name  = "${var.project_name}-autosleep-policy"
 
   policy = jsonencode({
-    Version = "2012-10-17",
+    Version = "2012-10-17"
     Statement = [
       {
-        Effect = "Allow",
-        Action = [
-          "ecs:DescribeServices",
-          "ecs:ListTasks",
-          "ecs:DescribeTasks",
-          "ecs:UpdateService"
-        ],
-        Resource = "*"
-      },
-      {
-        Effect = "Allow",
+        Sid    = "WriteAutosleepLogs"
+        Effect = "Allow"
         Action = [
           "logs:CreateLogGroup",
           "logs:CreateLogStream",
           "logs:PutLogEvents"
-        ],
+        ]
+        Resource = [
+          "arn:aws:logs:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:log-group:/aws/lambda/${var.project_name}-autosleep:*"
+        ]
+      },
+      {
+        Sid    = "ManageEcsServiceScaling"
+        Effect = "Allow"
+        Action = [
+          "ecs:DescribeServices",
+          "ecs:UpdateService"
+        ]
+        Resource = "arn:aws:ecs:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:service/${aws_ecs_cluster.this.name}/${aws_ecs_service.app.name}"
+      },
+      {
+        Sid    = "InspectEcsTasks"
+        Effect = "Allow"
+        Action = [
+          "ecs:ListTasks",
+          "ecs:DescribeTasks"
+        ]
         Resource = "*"
       }
     ]
@@ -73,8 +84,8 @@ resource "aws_lambda_function" "autosleep" {
   runtime       = "python3.12"
   handler       = "auto_sleep.handler"
 
-  filename         = local.sleep_zip_path
-  source_code_hash = local.sleep_zip_hash
+  filename         = data.archive_file.sleep_zip.output_path
+  source_code_hash = data.archive_file.sleep_zip.output_base64sha256
   timeout          = 15
 
   environment {
@@ -83,6 +94,10 @@ resource "aws_lambda_function" "autosleep" {
       SERVICE_NAME        = aws_ecs_service.app.name
       SLEEP_AFTER_MINUTES = tostring(var.sleep_after_minutes)
     }
+  }
+
+  tracing_config {
+    mode = "Active"
   }
 
   depends_on = [

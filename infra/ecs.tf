@@ -1,8 +1,14 @@
 ############################################
-# ECS — Cluster
+# ECS Cluster — Fargate demo with insights
+# Purpose: Host Fargate service with Container Insights enabled
 ############################################
 resource "aws_ecs_cluster" "this" {
   name = "${var.project_name}-cluster"
+
+  setting {
+    name  = "containerInsights"
+    value = "enabled"
+  }
 }
 
 ############################################
@@ -39,9 +45,14 @@ resource "aws_iam_role" "ecs_task_role" {
 }
 
 ############################################
-# ECS — Task Definition (Fargate, ARM64)
+# ECS — Task Definition (Fargate, X86_64)
 ############################################
 resource "aws_ecs_task_definition" "app" {
+
+  depends_on = [
+    null_resource.build_and_push_image
+  ]
+
   family                   = "${var.project_name}-task"
   requires_compatibilities = ["FARGATE"]
   network_mode             = "awsvpc"
@@ -52,19 +63,19 @@ resource "aws_ecs_task_definition" "app" {
 
   container_definitions = jsonencode([
     {
-      name      = "app",
-      image     = "${aws_ecr_repository.this.repository_url}:latest",
-      essential = true,
+      name      = "app"
+      image     = "${aws_ecr_repository.this.repository_url}:${local.app_image_tag}"
+      essential = true
       portMappings = [{
-        containerPort = var.app_port,
-        hostPort      = var.app_port,
+        containerPort = var.app_port
+        hostPort      = var.app_port
         protocol      = "tcp"
-      }],
+      }]
       logConfiguration = {
-        logDriver = "awslogs",
+        logDriver = "awslogs"
         options = {
-          awslogs-group         = aws_cloudwatch_log_group.app.name,
-          awslogs-region        = var.region,
+          awslogs-group         = aws_cloudwatch_log_group.app.name
+          awslogs-region        = var.region
           awslogs-stream-prefix = "ecs"
         }
       }
@@ -73,10 +84,12 @@ resource "aws_ecs_task_definition" "app" {
 
   runtime_platform {
     operating_system_family = "LINUX"
-    cpu_architecture        = "ARM64"
+    cpu_architecture        = "X86_64"
   }
 
-  tags = { Project = var.project_name }
+  tags = {
+    Project = var.project_name
+  }
 }
 
 ############################################
