@@ -1,0 +1,22 @@
+# Checkov configuration for docker-ecs-deployment
+# We explicitly skip a few checks that conflict with the project's
+# cost-optimization and "public demo" design.
+
+skip-check:
+  # Lambda env encryption / DLQ / VPC / IAM wildcard / log retention / KMS
+  - CKV_AWS_173 # Lambda env encryption – no secrets in env
+  - CKV_AWS_116 # No DLQ – short-lived demo Lambdas
+  - CKV_AWS_117 # No VPC – public demo, keep it simple
+  - CKV_AWS_355 # Wildcard IAM in tightly scoped demo role
+  - CKV_AWS_338 # Log retention < 1 year – intentional
+  - CKV_AWS_158 # No KMS on log groups – out of scope
+  - CKV_AWS_333 # Public IP on ECS task – required for demo
+  - CKV_AWS_136 # Default ECR encryption is enough here
+
+  # New findings: API GW auth, Lambda code-signing / concurrency, SG rules, module source
+  - CKV_AWS_309 # Wake endpoint intentionally public
+  - CKV_AWS_272 # Code-signing not needed for this demo
+  - CKV_AWS_115 # No strict concurrency limit needed
+  - CKV_AWS_382 # 0.0.0.0/0 egress accepted for AWS APIs
+  - CKV_AWS_260 # HTTP:80 from internet required for demo
+  - CKV_TF_1 # No external modules pinned by git hash

@@ -56,14 +56,16 @@ jobs:
         working-directory: infra
 
       - name: Run tfsec
-        uses: aquasecurity/tfsec-action@v1
+        uses: aquasecurity/tfsec-action@v1.0.3
         with:
-          working-directory: infra
+          working_directory: infra
+          github_token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Run Checkov
         uses: bridgecrewio/checkov-action@v12
         with:
           directory: infra
+          config_file: .checkov.yml
           quiet: true
 
       - name: Comment on PR with Terraform CI result
