@@ -1,5 +1,6 @@
 # Architecture Overview
 
+```text
 docker-ecs-deployment
 ├── app/
 │   ├── Dockerfile
@@ -74,6 +75,7 @@ docker-ecs-deployment
 ├── .gitignore
 ├── .tflint.hcl
 └── README.md
+```
 
 ## 1. Components
 
