@@ -2,6 +2,7 @@
 
 ```text
 docker-ecs-deployment
+├── .checkov.yml
 ├── app/
 │   ├── Dockerfile
 │   ├── package.json

@@ -420,6 +420,59 @@ Ideal for learning, demos, interviews, and real-world DevOps practice — all wi
 
 ---
 
+## **Terraform CI**
+
+### **Overview**
+
+Terraform CI runs automatically on every pull request that touches:
+
+- `infra/**`
+- `.github/workflows/terraform-ci.yml`
+- `.tflint.hcl`
+- `.checkov.yml`
+
+The pipeline validates infrastructure changes **before** they reach `main`.
+
+---
+
+### **Terraform Versions Tested**
+
+| **Terraform version** |
+|-----------------------|
+| 1.6.6                 |
+| 1.8.5                 |
+| 1.9.5                 |
+
+Each version runs the full set of format, validation, lint, and security checks.
+
+---
+
+### **Checks Included**
+
+- **Formatting**
+  - `terraform fmt -check`
+- **Core validation**
+  - `terraform init -backend=false`
+  - `terraform validate`
+- **Static analysis**
+  - `tflint --recursive`
+- **Security scanning**
+  - `tfsec` (via `aquasecurity/tfsec-action`)
+  - `checkov` (via `.checkov.yml` policy file)
+
+If any of these steps fail for any Terraform version, the CI check on the pull request is marked as failed.
+
+---
+
+### **Files Involved**
+
+- `.github/workflows/terraform-ci.yml` – CI workflow definition  
+- `.tflint.hcl` – TFLint configuration  
+- `.checkov.yml` – Checkov policy and skipped rules for this demo design  
+- `infra/` – Terraform root module and all infrastructure code
+
+---
+
 ## **Screenshots**
 
 ###  Service Warming Up
