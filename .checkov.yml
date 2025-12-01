@@ -4,33 +4,19 @@
 
 skip-check:
   # Lambda env encryption / DLQ / VPC / IAM wildcard / log retention / KMS
-  - id: CKV_AWS_173
-    comment: "No sensitive data in Lambda env; simple demo, no KMS needed."
-  - id: CKV_AWS_116
-    comment: "No DLQ for short-lived demo Lambdas; failures visible via logs."
-  - id: CKV_AWS_117
-    comment: "Lambdas are intentionally public (no VPC) to keep design simple."
-  - id: CKV_AWS_355
-    comment: "IAM wildcard used in tightly scoped role for demo simplicity."
-  - id: CKV_AWS_338
-    comment: "Short log retention is intentional for low cost."
-  - id: CKV_AWS_158
-    comment: "KMS encryption for log groups is out of scope for this demo."
-  - id: CKV_AWS_333
-    comment: "Public IP on ECS task is required for direct HTTP demo access."
-  - id: CKV_AWS_136
-    comment: "Default ECR encryption is sufficient for non-sensitive demo image."
+  - CKV_AWS_173 # Lambda env encryption – no secrets in env
+  - CKV_AWS_116 # No DLQ – short-lived demo Lambdas
+  - CKV_AWS_117 # No VPC – public demo, keep it simple
+  - CKV_AWS_355 # Wildcard IAM in tightly scoped demo role
+  - CKV_AWS_338 # Log retention < 1 year – intentional
+  - CKV_AWS_158 # No KMS on log groups – out of scope
+  - CKV_AWS_333 # Public IP on ECS task – required for demo
+  - CKV_AWS_136 # Default ECR encryption is enough here
 
   # New findings: API GW auth, Lambda code-signing / concurrency, SG rules, module source
-  - id: CKV_AWS_309
-    comment: "Wake endpoint is intentionally unauthenticated public demo URL."
-  - id: CKV_AWS_272
-    comment: "Lambda code-signing is overkill for this non-production demo."
-  - id: CKV_AWS_115
-    comment: "No strict concurrency limit needed for low-traffic demo functions."
-  - id: CKV_AWS_382
-    comment: "Wide egress is accepted trade-off; container only talks to AWS APIs."
-  - id: CKV_AWS_260
-    comment: "HTTP:80 from the internet is required for direct demo access."
-  - id: CKV_TF_1
-    comment: "No external Terraform modules pinned by git hash in this repo."
+  - CKV_AWS_309 # Wake endpoint intentionally public
+  - CKV_AWS_272 # Code-signing not needed for this demo
+  - CKV_AWS_115 # No strict concurrency limit needed
+  - CKV_AWS_382 # 0.0.0.0/0 egress accepted for AWS APIs
+  - CKV_AWS_260 # HTTP:80 from internet required for demo
+  - CKV_TF_1 # No external modules pinned by git hash
