@@ -1,81 +1,81 @@
 # Architecture Overview
 
 ```text
-docker-ecs-deployment
-├── .checkov.yml
-├── app/
-│   ├── Dockerfile
-│   ├── package.json
-│   ├── package-lock.json
+docker-ecs-deployment/
+├── .checkov.yml                      # Checkov config (policy-as-code for Terraform)
+├── .gitignore                        # Git ignore rules (builds, .terraform/, logs, IDE)
+├── .tflint.hcl                       # TFLint config (Terraform lint rules)
+├── LICENSE                           # Project license (MIT)
+├── README.md                         # Main project documentation
+│
+├── app/                              # Node.js demo application (Express)
+│   ├── Dockerfile                    # App container image definition
+│   ├── package.json                  # Node.js dependencies and scripts
+│   ├── package-lock.json             # Locked dependency versions
 │   └── src/
-│       └── server.js
+│       └── server.js                 # Express HTTP API entrypoint
 │
-├── autosleep/
-│   └── auto_sleep.py                  # Auto-sleep Lambda source (Python)
+├── autosleep/                        # Auto-sleep Lambda source (Python)
+│   └── auto_sleep.py                 # Stops ECS service when idle
 │
-├── wake/
-│   └── lambda_function.py             # Wake Lambda source (Python)
+├── wake/                             # Wake Lambda source (Python)
+│   └── lambda_function.py            # Starts ECS service on demand
 │
-├── build/
-│   ├── wake.zip                       # Auto-built by Terraform (archive_file)
-│   └── sleep.zip                      # Auto-built by Terraform
+├── build/                            # Terraform-built Lambda bundles (gitignored)
+│   ├── wake.zip                      # Packaged wake Lambda (archive_file)
+│   └── sleep.zip                     # Packaged autosleep Lambda (archive_file)
 │
-├── infra/                             # All Terraform infrastructure
-│   ├── backend.tf                     # S3 + DynamoDB remote state backend
-│   ├── providers.tf                   # AWS provider + versions (aws/null/archive)
-│   ├── variables.tf                   # Input variables
-│   ├── locals.tf                      # Derived locals (paths, ECR, image tag)
-│   ├── networking.tf                  # VPC, subnets, security groups
-│   ├── ecr.tf                         # ECR repository
-│   ├── ecs.tf                         # ECS cluster, task definition, service
-│   ├── image_build.tf                 # Terraform-driven Docker build & push
-│   ├── wake.tf                        # Wake Lambda + API Gateway integration
-│   ├── logs.tf                        # CloudWatch Log Groups
-│   ├── api-mapping.tf                 # Optional API mappings (root, subdomain)
-│   ├── main.tf                        # High-level resources assembly
-│   └── outputs.tf                     # Exported values
+├── infra/                            # All Terraform infrastructure
+│   ├── backend.tf                    # S3 + DynamoDB remote state backend
+│   ├── providers.tf                  # AWS provider + versions (aws/archive/random)
+│   ├── variables.tf                  # Input variables
+│   ├── locals.tf                     # Derived locals (paths, names, image tags)
+│   ├── networking.tf                 # VPC, subnets, security groups
+│   ├── ecr.tf                        # ECR repository for app image
+│   ├── ecs.tf                        # ECS cluster, task definition, service
+│   ├── image_build.tf                # Terraform-driven Docker build & push to ECR
+│   ├── wake.tf                       # Wake/Autosleep Lambdas + EventBridge + IAM
+│   ├── logs.tf                       # CloudWatch Log Groups for app and Lambdas
+│   ├── api-mapping.tf                # API Gateway + custom domain / mappings
+│   ├── main.tf                       # High-level module wiring / orchestration
+│   └── outputs.tf                    # Exported values (URLs, ARNs, IDs)
 │
-├── docs/
-│   ├── architecture.md                # High-level system description
-│   ├── cost.md
-│   ├── monitoring.md
-│   ├── slo.md
-│   ├── threat-model.md
-│   ├── adr/                           # Architecture Decision Records
+├── docs/                             # Architecture, ops, and security documentation
+│   ├── architecture.md               # High-level system diagram and flow
+│   ├── cost.md                       # Cost model and optimization notes
+│   ├── monitoring.md                 # Metrics, logs, and alerting strategy
+│   ├── slo.md                        # SLOs / SLIs for the service
+│   ├── threat-model.md               # Threat model and security assumptions
+│   ├── adr/                          # Architecture Decision Records
 │   │   ├── ADR-001-oidc-vs-access-keys.md
 │   │   ├── ADR-002-single-az-vs-multi-az.md
 │   │   ├── ADR-003-api-gateway-as-public-entrypoint.md
 │   │   ├── ADR-004-ecs-fargate.md
 │   │   └── ADR-005-autosleep-lambda-eventbridge.md
-│   ├── diagrams/
-│   │   ├── architecture.md
-│   │   └── sequence.md
-│   ├── runbooks/
+│   ├── diagrams/                     # Text diagrams for README / docs
+│   │   ├── architecture.md           # Mermaid-style architecture diagram
+│   │   └── sequence.md               # Wake / autosleep sequence diagram
+│   ├── runbooks/                     # Operational runbooks
 │   │   ├── RUNBOOK-wake-failures.md
 │   │   ├── RUNBOOK-autosleep-issues.md
 │   │   └── RUNBOOK-deployment-rollback.md
-│   └── readme-screenshots/            # Images included in README
+│   └── readme-screenshots/           # Screenshots embedded in README
 │       ├── 1-warming-up.png
 │       ├── 2-app-running.png
 │       ├── 3-ecs-service-awake.png
 │       ├── 4-ecs-service-sleep.png
 │       └── 5-autosleep-log.png
 │
-├── .github/
-│   ├── ISSUE_TEMPLATE/                # Issue templates for GitHub UI
-│   │   ├── bug.md
-│   │   └── feature.md
-│   ├── pull_request_template.md       # PR checklist & sections
-│   └── workflows/                     # CI/CD/OPS GitHub Actions
-│       ├── cd.yml                     # Terraform apply/destroy + deploy
-│       ├── ci.yml                     # App build & push to ECR
-│       ├── ops.yml                    # Wake/Sleep on demand
-│       └── terraform-ci.yml           # Terraform lint/validate for PRs
-│
-├── .gitignore
-├── .tflint.hcl
-├── LICENSE
-└── README.md
+└── .github/                          # GitHub configuration and workflows
+    ├── ISSUE_TEMPLATE/               # Issue templates for GitHub UI
+    │   ├── bug.md
+    │   └── feature.md
+    ├── pull_request_template.md      # PR checklist & structure
+    └── workflows/                    # CI/CD and ops GitHub Actions
+        ├── ci.yml                    # App build & push to ECR
+        ├── cd.yml                    # Terraform apply/destroy + deploy
+        ├── ops.yml                   # Manual wake/sleep operations
+        └── terraform-ci.yml          # Terraform lint/validate for PRs
 ```
 
 ## 1. Components
