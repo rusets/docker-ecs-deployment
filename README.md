@@ -29,7 +29,9 @@ A **fully automated, scale-to-zero ECS Fargate deployment** with **on-demand wak
 - The **Wake Lambda** scales the ECS service to **1 task** and redirects the user to the task’s **public IP**
 - After inactivity, the **Auto-Sleep Lambda** scales the service back to **0**
 
-No **ALB**. No **Route 53 hosted zone**. No **persistent compute**.  
+No **ALB**. No *project-created* Route 53 hosted zone — the stack works fully on the
+default API Gateway invoke URL.  
+A custom domain is **optional** and not required for deployment. No **persistent compute**.  
 Only **API Gateway + Lambda + ECS** → optimized for the **lowest possible AWS bill**.
 
 ---
@@ -62,6 +64,41 @@ flowchart LR
     ECS -->|public IP| Internet
   end
 ```
+---
+
+## **Prerequisites**
+
+- AWS account (**us-east-1** recommended)
+- S3 bucket + DynamoDB table for Terraform backend  
+  (or use the backend config in `infra/backend.tf`)
+- IAM role for GitHub OIDC (minimal permissions for ECR, ECS, Lambda)
+- Terraform ≥ 1.6 and AWS CLI installed locally
+- GitHub repository with Actions enabled
+
+---
+
+## **Quick Start**
+
+### **Local Terraform Deployment**
+```bash
+cd infra
+
+terraform init
+terraform plan -out=tfplan
+terraform apply -auto-approve tfplan
+```
+
+### **CI/CD Deployment (Recommended)**
+
+- Push to `main`  
+  → CI builds the Docker image and tags it with the **commit SHA**
+- CI pushes the immutable SHA-tagged image to **Amazon ECR**
+- CD workflow automatically:
+  - Applies Terraform
+  - Registers a new ECS Task Definition
+  - Updates the ECS service to the **exact SHA image**
+  - Waits until the service becomes **stable**
+
 ---
 
 ## **Key AWS Services Used**
@@ -293,8 +330,8 @@ This keeps the project **fully keyless**, secure, and aligned with AWS best prac
 
 - **App CI (`ci.yml`)**
   - Builds the Docker image from `./app`
-  - Tags and pushes it to **Amazon ECR**
-  - Can be triggered on push / PR to keep the image fresh
+  - Tags the image using the **commit SHA** (immutable tag strategy)
+  - Pushes the image to **Amazon ECR** — no `latest`, no overwrites
 
 - **Terraform CI (`terraform-ci.yml`)**
   - Runs on **pull requests** to validate infrastructure changes
@@ -313,6 +350,8 @@ This keeps the project **fully keyless**, secure, and aligned with AWS best prac
   - Registers a new **ECS Task Definition**
   - Updates the **ECS service** to the selected image tag
   - Waits until the service becomes **stable**
+  - Deploys the exact **SHA-tagged image** produced by CI  
+    (ECR tag immutability ensures deterministic deployments)
 
 - **OPS — Wake / Sleep (`ops.yml`)**
   - Provides manual operational helpers:
@@ -346,13 +385,13 @@ This keeps the project **fully keyless**, secure, and aligned with AWS best prac
 
 ## **Security Posture & Static Analysis**
 
-- Full GitHub Actions pipeline runs **fmt**, **validate**, **tflint**, **tfsec**, and **checkov** on every PR.
-- Infrastructure follows **least-privilege IAM** with OIDC-based authentication (no long-lived AWS keys).
-- No secrets stored in repo, Terraform state, or workflow files.
-- Lambda and ECS tasks run with **minimal execution roles** scoped only to required APIs.
-- Network surface is minimal: public-only subnets, no inbound ports except the app port.
-- All build artifacts are isolated from source (`build/` directory, not committed).
-- CloudWatch logging provides full audit visibility without exposing sensitive data.
+- CI enforces formatting, validation, linting, and security scanning  
+  (`terraform fmt`, `validate`, **tflint**, **tfsec**, **checkov**)
+- All AWS access uses **GitHub OIDC** — no long-lived secrets
+- IAM follows **least privilege** for ECS, ECR, Lambda, Logs, and API Gateway
+- No sensitive data in GitHub, Terraform state, or Lambda/ECS env vars
+- Network footprint minimized: public-only subnets, no NAT Gateway, no ALB
+- Build artifacts isolated (`build/`), no compiled code stored in repo
 
 ---
 
