@@ -184,7 +184,8 @@ docker-ecs-deployment
 ├── infra/             # All Terraform infrastructure
 ├── docs/              # Architecture, ADRs, runbooks
 ├── .github/           # CI/CD workflows + templates
-└── README.md
+├── README.md
+└── LICENSE
 
 ```
 **Full detailed structure:** see [`docs/architecture.md`](./docs/architecture.md)

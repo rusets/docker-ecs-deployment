@@ -34,7 +34,6 @@ docker-ecs-deployment
 │   ├── api-mapping.tf                 # Optional API mappings (root, subdomain)
 │   ├── main.tf                        # High-level resources assembly
 │   └── outputs.tf                     # Exported values
-│    
 │
 ├── docs/
 │   ├── architecture.md                # High-level system description
@@ -48,9 +47,9 @@ docker-ecs-deployment
 │   │   ├── ADR-003-api-gateway-as-public-entrypoint.md
 │   │   ├── ADR-004-ecs-fargate.md
 │   │   └── ADR-005-autosleep-lambda-eventbridge.md
-│   ├── diagrams
-│   │   ├── architecture.md
-│   │   └── sequence.md
+│   ├── diagrams/
+│   │   ├── architecture.md
+│   │   └── sequence.md
 │   ├── runbooks/
 │   │   ├── RUNBOOK-wake-failures.md
 │   │   ├── RUNBOOK-autosleep-issues.md
@@ -63,18 +62,19 @@ docker-ecs-deployment
 │       └── 5-autosleep-log.png
 │
 ├── .github/
-│   ├── ISSUE_TEMPLATE/              # Issue templates for GitHub UI
+│   ├── ISSUE_TEMPLATE/                # Issue templates for GitHub UI
 │   │   ├── bug.md
 │   │   └── feature.md
-│   ├── pull_request_template.md     # PR checklist & sections
-│   └── workflows/                   # CI/CD/OPS GitHub Actions
-│       ├── cd.yml                   # Terraform apply/destroy + deploy
-│       ├── ci.yml                   # App build & push to ECR
-│       ├── ops.yml                  # Wake/Sleep on demand
-│       └── terraform-ci.yml         # Terraform lint/validate for PRs
+│   ├── pull_request_template.md       # PR checklist & sections
+│   └── workflows/                     # CI/CD/OPS GitHub Actions
+│       ├── cd.yml                     # Terraform apply/destroy + deploy
+│       ├── ci.yml                     # App build & push to ECR
+│       ├── ops.yml                    # Wake/Sleep on demand
+│       └── terraform-ci.yml           # Terraform lint/validate for PRs
 │
 ├── .gitignore
 ├── .tflint.hcl
+├── LICENSE
 └── README.md
 ```
 
