@@ -75,4 +75,4 @@ jobs:
       - name: Output image refs
         run: |
           echo "Pushed:"
-          echo "  ${ { steps.ecr.outputs.ECR_URL } }:${ { env.IMAGE_TAG } }"
+          echo "  ${{ steps.ecr.outputs.ECR_URL }}:${{ env.IMAGE_TAG }}"
