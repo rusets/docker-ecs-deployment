@@ -336,7 +336,7 @@ This keeps the project **fully keyless**, secure, and aligned with AWS best prac
 - **Cluster:** ecs-demo-cluster  
 - **Service:** ecs-demo-svc  
 - **Task Size:** 0.25 vCPU / 0.5 GB RAM  
-- **Idle Timeout:** 5 minutes (`sleep_after_minutes`)  
+- **Idle Timeout:** 5 minutes (`SLEEP_AFTER_MINUTES` — Terraform variable & Lambda env)  
 - **Warm-up Budget:** 120s (`WAIT_MS`)  
 - **Public Endpoint:** redirects to the Fargate task’s public IP  
 - **Terraform Backend:** S3 + DynamoDB (project-specific names)  
@@ -404,22 +404,6 @@ Each trade-off is intentional to support a **near-zero-cost, on-demand environme
 
 ---
 
-### **Summary**
-
-This project delivers a **fully automated, on-demand ECS Fargate environment** that operates at **near-zero cost**.  
-It wakes within about a minute when accessed, sleeps when idle, and uses a minimal, secure, and production-style architecture with Terraform and GitHub Actions.
-
-AWS components, IAM roles, CI/CD, and Lambdas are all designed around:  
-- **Simplicity**  
-- **Security**  
-- **Cost efficiency**  
-- **Reproducibility**  
-- **Portfolio-ready clarity**
-
-Ideal for learning, demos, interviews, and real-world DevOps practice — all without paying for idle compute.
-
----
-
 ## **Terraform CI**
 
 ### **Overview**
@@ -431,7 +415,8 @@ Terraform CI runs automatically on every pull request that touches:
 - `.tflint.hcl`
 - `.checkov.yml`
 
-The pipeline validates infrastructure changes **before** they reach `main`.
+It verifies that **formatting, validation, linting, and security checks all pass**
+across multiple Terraform versions **before** changes reach `main`.
 
 ---
 
@@ -506,6 +491,22 @@ This ensures cost-efficient operation by shutting down inactive containers.
 CloudWatch logs confirm the autosleep action with the payload:  
 `{"ok": true, "stopped": true}` — indicating the ECS service has successfully stopped.
 ![Autosleep Log](docs/readme-screenshots/5-autosleep-log.png)
+
+---
+
+### **Summary**
+
+This project delivers a **fully automated, on-demand ECS Fargate environment** that operates at **near-zero cost**.  
+It wakes within about a minute when accessed, sleeps when idle, and uses a minimal, secure, and production-style architecture with Terraform and GitHub Actions.
+
+AWS components, IAM roles, CI/CD, and Lambdas are all designed around:  
+- **Simplicity**  
+- **Security**  
+- **Cost efficiency**  
+- **Reproducibility**  
+- **Portfolio-ready clarity**
+
+Ideal for learning, demos, interviews, and real-world DevOps practice — all without paying for idle compute.
 
 ---
 
