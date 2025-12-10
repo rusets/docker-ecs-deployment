@@ -36,6 +36,8 @@ docker-ecs-deployment/
 │   ├── image_build.tf                # Terraform-driven Docker build & push to ECR
 │   ├── wake.tf                       # Wake/Autosleep Lambdas + EventBridge + IAM
 │   ├── logs.tf                       # CloudWatch Log Groups for app and Lambdas
+│   ├── api/                          # OpenAPI specs for API Gateway routes
+│   │   └── openapi-wake.yaml         # Spec for wake endpoint (HTTP API)
 │   ├── api-mapping.tf                # API Gateway + custom domain / mappings
 │   ├── main.tf                       # High-level module wiring / orchestration
 │   └── outputs.tf                    # Exported values (URLs, ARNs, IDs)
