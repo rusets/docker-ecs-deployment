@@ -1,4 +1,4 @@
-#  Docker-ecs-deployment
+# Docker ECS Deployment — Scale-to-Zero Fargate Demo
 
 <p align="center">
   <img src="https://img.shields.io/badge/Terraform-IaC-5C4EE5?logo=terraform" />
@@ -66,6 +66,15 @@ flowchart LR
 ```
 ---
 
+## **OpenAPI-First Wake API**
+
+- The wake HTTP API is defined via an **OpenAPI 3** spec in `infra/api/openapi-wake.yaml`.
+- Terraform uses this spec to configure **API Gateway HTTP API** (routes, methods, integration).
+- Security and structure of the spec are covered by the same **Checkov** policies as the Terraform code.
+- This keeps the API definition **versioned**, **reviewable in PRs**, and easy to reuse in other clients.
+
+---
+
 ## **Prerequisites**
 
 - AWS account (**us-east-1** recommended)
@@ -103,17 +112,17 @@ terraform apply -auto-approve tfplan
 
 ## **Key AWS Services Used**
 
-| Service          | Purpose                                                         |
-|------------------|-----------------------------------------------------------------|
-| **API Gateway**  | Entry point for wake requests → triggers the Wake Lambda        |
-| **AWS Lambda**   | Wake and Auto-Sleep logic (scale ECS to 1 → back to 0)          |
-| **Amazon ECS**   | Fargate service running the Node.js application                 |
-| **AWS Fargate**  | Serverless compute for containers (no EC2, scale-to-zero ready) |
-| **Amazon ECR**   | Storage for Docker container images                             |
-| **Amazon VPC**   | Public-only networking, subnets, Internet Gateway               |
-| **CloudWatch**   | Logs for Lambda, API Gateway, ECS                               |
-| **EventBridge**  | Scheduler that triggers Auto-Sleep every minute                 |
-| **S3 + DynamoDB**| Terraform backend (state + locking)                             |
+| Service          | Purpose                                                        |
+|------------------|----------------------------------------------------------------|
+| **API Gateway**  | Wake HTTP endpoint (OpenAPI spec) → calls Wake Lambda          |
+| **AWS Lambda**   | Wake and Auto-Sleep logic (scale ECS to 1 → back to 0)         |
+| **Amazon ECS**   | Fargate service running the Node.js application                |
+| **AWS Fargate**  | Serverless compute for containers (no EC2, scale-to-zero ready)|
+| **Amazon ECR**   | Storage for Docker container images                            |
+| **Amazon VPC**   | Public-only networking, subnets, Internet Gateway              |
+| **CloudWatch**   | Logs for Lambda, API Gateway, ECS                              |
+| **EventBridge**  | Scheduler that triggers Auto-Sleep every minute                |
+| **S3 + DynamoDB**| Terraform backend (state + locking)                            |
 
 ---
 
@@ -182,6 +191,7 @@ docker-ecs-deployment
 ├── autosleep/         # Auto-sleep Lambda (Python)
 ├── build/             # Built Lambda ZIPs (Terraform-generated)
 ├── infra/             # All Terraform infrastructure
+│   └── api/openapi-wake.yaml   # OpenAPI spec for the wake HTTP API
 ├── docs/              # Architecture, ADRs, runbooks
 ├── .github/           # CI/CD workflows + templates
 ├── README.md
@@ -482,8 +492,8 @@ Each version runs the full set of format, validation, lint, and security checks.
 - **Static analysis**
   - `tflint --recursive`
 - **Security scanning**
-  - `tfsec` (via `aquasecurity/tfsec-action`)
-  - `checkov` (via `.checkov.yml` policy file)
+  - `tfsec` (via `aquasecurity/tfsec-action`) for Terraform resources
+  - `checkov` (via `.checkov.yml` policy file) for Terraform + OpenAPI spec
 
 If any of these steps fail for any Terraform version, the CI check on the pull request is marked as failed.
 
@@ -494,8 +504,8 @@ If any of these steps fail for any Terraform version, the CI check on the pull r
 - `.github/workflows/terraform-ci.yml` – CI workflow definition  
 - `.tflint.hcl` – TFLint configuration  
 - `.checkov.yml` – Checkov policy and skipped rules for this demo design  
+- `infra/api/openapi-wake.yaml` – OpenAPI spec for the wake HTTP API  
 - `infra/` – Terraform root module and all infrastructure code
-
 ---
 
 ## **Screenshots**
