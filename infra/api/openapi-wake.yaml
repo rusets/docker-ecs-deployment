@@ -3,7 +3,9 @@ openapi: 3.0.1
 info:
   title: docker-ecs-deployment — Wake API
   version: "1.0.0"
-
+  description: >
+    Public GET endpoint used only to trigger the wake Lambda for the demo ECS service.
+    No sensitive data is returned, security is enforced at the AWS/IAM boundary.
 paths:
   /:
     get:
