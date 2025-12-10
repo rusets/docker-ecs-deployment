@@ -93,33 +93,17 @@ resource "aws_lambda_function" "wake" {
 }
 
 ############################################
-# API Gateway (HTTP API) — Wake endpoint API
+# API Gateway (HTTP API) — Wake endpoint API (OpenAPI-driven)
+# Purpose: Define routes and Lambda integration via OpenAPI spec
 ############################################
 resource "aws_apigatewayv2_api" "wake" {
   count         = var.enable_wake_api ? 1 : 0
   name          = "${var.project_name}-wake"
   protocol_type = "HTTP"
-}
 
-############################################
-# API Integration — Lambda proxy (payload v2.0)
-############################################
-resource "aws_apigatewayv2_integration" "wake" {
-  count                  = var.enable_wake_api ? 1 : 0
-  api_id                 = aws_apigatewayv2_api.wake[0].id
-  integration_type       = "AWS_PROXY"
-  integration_uri        = aws_lambda_function.wake[0].invoke_arn
-  payload_format_version = "2.0"
-}
-
-############################################
-# API Route — GET /
-############################################
-resource "aws_apigatewayv2_route" "wake" {
-  count     = var.enable_wake_api ? 1 : 0
-  api_id    = aws_apigatewayv2_api.wake[0].id
-  route_key = "GET /"
-  target    = "integrations/${aws_apigatewayv2_integration.wake[0].id}"
+  body = templatefile("${path.module}/api/openapi-wake.yaml", {
+    wake_lambda_invoke_arn = "arn:aws:apigateway:${data.aws_region.current.id}:lambda:path/2015-03-31/functions/${aws_lambda_function.wake[0].arn}/invocations"
+  })
 }
 
 ############################################
