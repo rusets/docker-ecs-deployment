@@ -56,16 +56,15 @@ jobs:
           fail_level: any
 
       - name: Run tfsec (SARIF)
-        uses: aquasecurity/tfsec-sarif-action@v0.1.4
+        uses: aquasecurity/tfsec-sarif-action@v1.0.3
         with:
-          sarif_file: tfsec-${{ matrix.terraform_version }}.sarif
           working_directory: infra
-          github_token: ${{ secrets.GITHUB_TOKEN }}
+          sarif_file: tfsec.sarif
 
       - name: Upload tfsec SARIF
         uses: github/codeql-action/upload-sarif@v4
         with:
-          sarif_file: tfsec-${{ matrix.terraform_version }}.sarif
+          sarif_file: tfsec.sarif
 
       - name: Upload tfsec SARIF
         uses: github/codeql-action/upload-sarif@v3
