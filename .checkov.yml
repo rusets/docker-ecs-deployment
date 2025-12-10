@@ -20,3 +20,6 @@ skip-check:
   - CKV_AWS_382 # 0.0.0.0/0 egress accepted for AWS APIs
   - CKV_AWS_260 # HTTP:80 from internet required for demo
   - CKV_TF_1 # No external modules pinned by git hash
+  # OpenAPI — wake endpoint осознанно публичный
+  - CKV_OPENAPI_4 # No global security scheme for public wake demo API
+  - CKV_OPENAPI_5 # Operation is intentionally unauthenticated

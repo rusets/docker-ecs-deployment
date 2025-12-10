@@ -1,0 +1,28 @@
+openapi: 3.0.1
+
+info:
+  title: docker-ecs-deployment — Wake API
+  version: "1.0.0"
+  description: >
+    Public GET endpoint used only to trigger the wake Lambda for the demo ECS service.
+    No sensitive data is returned, security is enforced at the AWS/IAM boundary.
+paths:
+  /:
+    get:
+      summary: Wake ECS service and redirect to app
+      operationId: getWake
+      responses:
+        "302":
+          description: Redirect to app or waiting page
+        "200":
+          description: HTML waiting/timeout page
+      x-amazon-apigateway-integration:
+        $ref: "#/components/x-amazon-apigateway-integrations/wake"
+
+components:
+  x-amazon-apigateway-integrations:
+    wake:
+      type: aws_proxy
+      uri: ${wake_lambda_invoke_arn}
+      httpMethod: POST
+      payloadFormatVersion: "2.0"
