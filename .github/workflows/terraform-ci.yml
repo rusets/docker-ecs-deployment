@@ -57,22 +57,17 @@ jobs:
           reporter: github-pr-check
           fail_level: any
 
+      - name: Run tfsec (SARIF)
+        uses: aquasecurity/tfsec-action@v1.0.3
+        with:
+          working_directory: infra
+          additional_args: --out tfsec.sarif --format sarif
+
       - name: Upload tfsec SARIF
         uses: github/codeql-action/upload-sarif@v4
         with:
-          sarif_file: tfsec.sarif
+          sarif_file: infra/tfsec.sarif
           category: tfsec-${{ matrix.terraform_version }}
-
-      - name: Upload Checkov SARIF
-        uses: github/codeql-action/upload-sarif@v4
-        with:
-          sarif_file: checkov.sarif
-          category: checkov-${{ matrix.terraform_version }}
-
-      - name: Upload tfsec SARIF
-        uses: github/codeql-action/upload-sarif@v3
-        with:
-          sarif_file: tfsec.sarif
 
       - name: Run Checkov (SARIF)
         uses: bridgecrewio/checkov-action@v12
@@ -87,6 +82,7 @@ jobs:
         uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: checkov.sarif
+          category: checkov-${{ matrix.terraform_version }}
 
       - name: Publish Terraform CI summary
         if: ${{ success() }}
