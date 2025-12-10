@@ -192,7 +192,7 @@ docker-ecs-deployment
 
 ---
 
-## 📘 Documentation
+##  Documentation
 
 - **Architecture:** [`docs/architecture.md`](docs/architecture.md)
 - **SLO:** [`docs/slo.md`](docs/slo.md)
@@ -469,6 +469,20 @@ across multiple Terraform versions **before** changes reach `main`.
 | 1.9.5                 |
 
 Each version runs the full set of format, validation, lint, and security checks.
+
+---
+
+### **CI Updates**
+
+Terraform CI now adds a short report to GitHub Actions after every run.  
+The report shows:
+
+- which Terraform versions were tested  
+- results of format and validate checks  
+- results from TFLint, Checkov, and tfsec  
+- links to detailed logs  
+
+This makes reviewing changes easier and faster.
 
 ---
 
