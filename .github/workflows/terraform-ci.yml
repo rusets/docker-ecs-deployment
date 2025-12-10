@@ -47,17 +47,13 @@ jobs:
         run: terraform validate
         working-directory: infra
 
-      - name: Setup TFLint
-        uses: terraform-linters/setup-tflint@v4
-        with:
-          tflint_version: latest
-
-      - name: Run TFLint (with annotations)
-        uses: terraform-linters/tflint-pr-commenter-action@v1
+      - name: Run TFLint with reviewdog
+        uses: reviewdog/action-tflint@v1
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          tflint_command: "tflint --recursive"
-          directory: "infra"
+          working_directory: infra
+          reporter: github-pr-check
+          fail_level: any
 
       - name: Run tfsec (SARIF)
         uses: aquasecurity/tfsec-action@v1.0.3
