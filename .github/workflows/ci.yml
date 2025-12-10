@@ -76,3 +76,19 @@ jobs:
         run: |
           echo "Pushed:"
           echo "  ${{ steps.ecr.outputs.ECR_URL }}:${{ env.IMAGE_TAG }}"
+
+      - name: Publish build summary
+        if: ${{ success() }}
+        run: |
+          cat << EOF >> "$GITHUB_STEP_SUMMARY"
+          # Docker Image Build Summary
+
+          - Repository: \`${{ env.ECR_REPOSITORY }}\`
+          - Region: \`${{ env.AWS_REGION }}\`
+          - Image: \`${{ steps.ecr.outputs.ECR_URL }}:${{ env.IMAGE_TAG }}\`
+          - Event: \`${{ github.event_name }}\`
+          - Commit: \`${{ github.sha }}\`
+          - Actor: \`${{ github.actor }}\`
+          - Run: \`${{ github.run_number }}\`
+
+          EOF
