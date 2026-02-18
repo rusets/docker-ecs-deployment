@@ -1,40 +1,30 @@
-# Docker ECS Deployment — Scale-to-Zero Fargate Demo
+# Docker ECS Deployment — Fargate + On-Demand Provisioning
 
 <p align="center">
   <img src="https://img.shields.io/badge/Terraform-IaC-5C4EE5?logo=terraform" />
-  <img src="https://img.shields.io/badge/AWS-Cloud-F29100?logo=amazon-aws" />
+  <img src="https://img.shields.io/badge/AWS-ECS%20Fargate-FF9900?logo=amazon-ecs" />
+  <img src="https://img.shields.io/badge/AWS-Lambda%20%2B%20API_Gateway-FF9900?logo=awslambda" />
   <img src="https://img.shields.io/badge/GitHub_Actions-CI%2FCD-2088FF?logo=github-actions" />
-  <img src="https://img.shields.io/badge/ECS-Fargate-FF9900?logo=amazon-ecs" />
-  <img src="https://img.shields.io/badge/ECR-Registry-FF9900?logo=amazon-ecr" />
-  <img src="https://img.shields.io/badge/Lambda-Wake%20%2F%20AutoSleep-FF9900?logo=awslambda" />
-  <img src="https://img.shields.io/badge/API_Gateway-HTTP_API-orange?logo=amazon-api-gateway" />
-  <img src="https://img.shields.io/badge/EventBridge-Scheduler-C135F5?logo=amazoneventbridge" />
-</p>
-
-<p align="center">
-  <img src="https://img.shields.io/badge/terraform-fmt%20✔-623CE4?logo=terraform" />
-  <img src="https://img.shields.io/badge/terraform-validate%20✔-623CE4?logo=terraform" />
-  <img src="https://img.shields.io/badge/tflint-clean%20✔-2D76FF?logo=terraform" />
-  <img src="https://img.shields.io/badge/tfsec-clean%20✔-FF4B4B?logo=trivy" />
-  <img src="https://img.shields.io/badge/checkov-clean%20✔-00A75A?logo=checkov" />
+  <img src="https://img.shields.io/badge/Security-tflint%20%7C%20tfsec%20%7C%20checkov-2D76FF" />
 </p>
 
 
-**Wait Page:** [https://api.ecs-demo.online](https://api.ecs-demo.online)  
+**Wait Page:** https://api.ecs-demo.online  
 
-A **fully automated, scale-to-zero ECS Fargate deployment** with **on-demand wake-up** and **automatic sleep**, built for **minimal cost** and **clean architecture**.
+I built this project as a fully automated, scale-to-zero ECS Fargate environment with on-demand provisioning and automatic shutdown.
 
-- The app normally runs at **$0** (`desiredCount=0`)
-- A request to the **Wait Page** triggers **API Gateway → Wake Lambda**
-- The **Wake Lambda** scales the ECS service to **1 task** and redirects the user to the task’s **public IP**
-- After inactivity, the **Auto-Sleep Lambda** scales the service back to **0**
+The service runs at **$0 by default** (`desiredCount=0`).  
+When a request hits the Wait Page, API Gateway triggers the Wake Lambda, which scales the ECS service to **1 task** and redirects the user to the task’s public IP.  
+After a defined idle period, the Auto-Sleep Lambda scales the service back to `0`.
 
-No **ALB**. No *project-created* Route 53 hosted zone — the stack works fully on the
-default API Gateway invoke URL.  
-A custom domain is **optional** and not required for deployment. No **persistent compute**.  
-Only **API Gateway + Lambda + ECS** → optimized for the **lowest possible AWS bill**.
+There is no ALB, no project-created Route 53 hosted zone, and no persistent compute.  
+The stack works directly on the API Gateway endpoint, with a custom domain as an optional layer.
+
+The architecture is intentionally minimal: **API Gateway + Lambda + ECS**.  
+The goal is deterministic on-demand startup, clean infrastructure design, and the lowest possible AWS cost without sacrificing clarity or control.
 
 ---
+
 ## **Architecture Overview**
 
 ```mermaid
@@ -66,22 +56,27 @@ flowchart LR
 ```
 ---
 
-## **OpenAPI-First Wake API**
+## OpenAPI-Driven Wake API
 
-- The wake HTTP API is defined via an **OpenAPI 3** spec in `infra/api/openapi-wake.yaml`.
-- Terraform uses this spec to configure **API Gateway HTTP API** (routes, methods, integration).
-- Security and structure of the spec are covered by the same **Checkov** policies as the Terraform code.
-- This keeps the API definition **versioned**, **reviewable in PRs**, and easy to reuse in other clients.
+The wake HTTP API is defined using an **OpenAPI 3** specification located in `infra/api/openapi-wake.yaml`.
+
+Terraform consumes this spec to configure the **API Gateway HTTP API**, including routes, methods, and Lambda integration.  
+The OpenAPI file is version-controlled alongside the infrastructure code and validated in CI.
+
+Both the Terraform configuration and the OpenAPI spec are scanned by **Checkov**, ensuring consistent policy enforcement across infrastructure and API definitions.
+
+This approach keeps the API contract explicit, reviewable in pull requests, and reusable across different clients or environments.
 
 ---
 
-## **Prerequisites**
+## Prerequisites
 
-- AWS account (**us-east-1** recommended)
-- S3 bucket + DynamoDB table for Terraform backend  
-  (or use the backend config in `infra/backend.tf`)
-- IAM role for GitHub OIDC (minimal permissions for ECR, ECS, Lambda)
-- Terraform ≥ 1.6 and AWS CLI installed locally
+- AWS account (region `us-east-1` recommended)
+- S3 bucket and DynamoDB table for Terraform remote backend  
+  (or use the configuration in `infra/backend.tf`)
+- IAM role configured for GitHub OIDC with permissions for ECR, ECS, Lambda, and Logs
+- Terraform ≥ 1.6
+- AWS CLI configured locally
 - GitHub repository with Actions enabled
 
 ---
@@ -97,94 +92,133 @@ terraform plan -out=tfplan
 terraform apply -auto-approve tfplan
 ```
 
-### **CI/CD Deployment (Recommended)**
+### CI/CD Deployment (Recommended)
 
-- Push to `main`  
-  → CI builds the Docker image and tags it with the **commit SHA**
-- CI pushes the immutable SHA-tagged image to **Amazon ECR**
-- CD workflow automatically:
-  - Applies Terraform
-  - Registers a new ECS Task Definition
-  - Updates the ECS service to the **exact SHA image**
-  - Waits until the service becomes **stable**
+Deployment is fully automated through GitHub Actions.
 
----
+When changes are pushed to `main`:
 
-## **Key AWS Services Used**
+- CI builds the Docker image from `./app`
+- The image is tagged with the **commit SHA** (immutable tag strategy)
+- The image is pushed to **Amazon ECR**
 
-| Service          | Purpose                                                        |
-|------------------|----------------------------------------------------------------|
-| **API Gateway**  | Wake HTTP endpoint (OpenAPI spec) → calls Wake Lambda          |
-| **AWS Lambda**   | Wake and Auto-Sleep logic (scale ECS to 1 → back to 0)         |
-| **Amazon ECS**   | Fargate service running the Node.js application                |
-| **AWS Fargate**  | Serverless compute for containers (no EC2, scale-to-zero ready)|
-| **Amazon ECR**   | Storage for Docker container images                            |
-| **Amazon VPC**   | Public-only networking, subnets, Internet Gateway              |
-| **CloudWatch**   | Logs for Lambda, API Gateway, ECS                              |
-| **EventBridge**  | Scheduler that triggers Auto-Sleep every minute                |
-| **S3 + DynamoDB**| Terraform backend (state + locking)                            |
+The CD workflow then:
+
+- Runs `terraform apply`
+- Registers a new ECS Task Definition referencing the SHA image
+- Updates the ECS service to the exact image version produced by CI
+- Waits until the ECS service reaches a **stable** state
+
+This guarantees deterministic deployments and removes any dependency on mutable tags like `latest`.
 
 ---
 
-## **Wake/Sleep Lifecycle**
+## Key AWS Services Used
 
-The environment remains **asleep (desiredCount=0)** when idle and wakes **only on demand**.
-
-- **Wake flow:**  
-  Client → API Gateway → Wake Lambda → `ecs:UpdateService` → Fargate task starts → user redirected to task public IP
-
-- **Sleep flow:**  
-  EventBridge (every 1 minute) → Auto-Sleep Lambda → checks ECS task activity → scales service back to `desiredCount=0`
-
-This ensures **near-zero cost** while still providing a fully functional on-demand application.
+| Service            | Role in the Architecture |
+|--------------------|--------------------------|
+| **API Gateway**    | Public HTTP endpoint defined via OpenAPI, invokes the Wake Lambda |
+| **AWS Lambda**     | Implements wake and auto-sleep logic (scales ECS service up and down) |
+| **Amazon ECS**     | Runs the containerized application as a Fargate service |
+| **AWS Fargate**    | Serverless compute layer for containers (no EC2 management) |
+| **Amazon ECR**     | Stores versioned Docker images (SHA-tagged) |
+| **Amazon VPC**     | Provides networking: public subnets, Internet Gateway, security groups |
+| **CloudWatch Logs**| Centralized logs for Lambda, API Gateway, and ECS |
+| **EventBridge**    | Scheduled trigger for the auto-sleep Lambda |
+| **S3 + DynamoDB**  | Remote Terraform state backend with locking |
 
 ---
 
-## **Default Timings (Current Configuration)**
+## Wake / Sleep Lifecycle
+
+The service operates in true **scale-to-zero** mode.  
+When idle, the ECS service remains at `desiredCount = 0` and consumes no compute resources.
+
+### Wake Flow
+
+Client → API Gateway → Wake Lambda → `ecs:UpdateService(desiredCount=1)`  
+→ Fargate task starts → Lambda waits for `RUNNING`  
+→ Browser redirects to the task public IP.
+
+### Sleep Flow
+
+EventBridge (runs every 1 minute)  
+→ Auto-Sleep Lambda checks activity  
+→ If idle, scales the service back to `desiredCount=0`.
+
+---
+
+## On-Demand Startup Challenge
+
+When scaling from `desiredCount=0`, early requests sometimes returned **HTTP 500**.
+
+**Cause**
+
+API Gateway forwarded traffic before the Fargate task was fully running and had obtained a public IP.  
+Startup time (~40 seconds) created a race condition during warm-up.
+
+**Fix**
+
+Implemented ECS task status polling inside the Wake Lambda, verified the `RUNNING` state, resolved the task public IP, and introduced a controlled warm-up window (`WAIT_MS`).
+
+**Result**
+
+Deterministic startup behavior with reliable redirects and no premature failures.
+
+---
+
+## Default Timings
 
 - **Wake delay:** ~40–60 seconds  
-  Time required for Fargate to pull the image, start the task, and pass health checks.
+  Time for Fargate to pull the image, start the task, and pass container health checks.
 
-- **Warm-up budget (`WAIT_MS`):** 120,000 ms  
-  How long the Wake Lambda waits before redirecting the user.
+- **Warm-up budget (`WAIT_MS`):** 120000 ms  
+  Maximum time the Wake Lambda waits for the task to reach `RUNNING` before returning a response.
 
-- **Idle timeout (`sleep_after_minutes`):** 5 minutes  
-  After this period with no requests, the Auto-Sleep Lambda scales the service to `desiredCount=0`.
+- **Idle timeout (`SLEEP_AFTER_MINUTES`):** 5 minutes  
+  If no activity is detected during this window, the Auto-Sleep Lambda scales the service back to `desiredCount=0`.
 
-- **Auto-sleep check frequency:** every 1 minute  
-  Driven by the EventBridge scheduled rule.
-
----
-
-## **Application Layer**
-
-- **Runtime:** Node.js 18 (Express)
-- **Source path:** `./app` (single-container web app)
-- **Container image:** built from `./app/Dockerfile` and pushed to ECR
-- **UI features:**
-  - Dark / light theme toggle
-  - Live logs via Server-Sent Events (SSE)
-  - Simple actions to simulate load and activity
-- **Port:** listens on `APP_PORT` (default `80`) inside the Fargate task
+- **Auto-sleep check interval:** 1 minute  
+  EventBridge triggers the sleep check on a fixed schedule.
 
 ---
 
-###  Wait Page & Frontend Flow
+## Application Layer
 
-- **Entry point:** user opens the public endpoint (API Gateway custom domain or invoke URL).
-- **Warm-up page:** the Wake Lambda responds with a lightweight HTML page that:
-  - Shows that the ECS service is starting.
-  - Waits while the task transitions from `PENDING` to `RUNNING`.
-- **Redirect target:** once the Fargate task is healthy, the page redirects the browser to:
-  - The task **public IP** over HTTP.
-  - The container’s application port (`APP_PORT`, default `80`).
-- **Timeout behavior:** if the task does not become ready within the configured warm-up budget (`WAIT_MS`), the page shows an error instead of redirecting.
+- **Runtime:** Node.js (Express-based HTTP service)
+- **Source directory:** `./app`
+- **Container image:** built from `./app/Dockerfile` and pushed to Amazon ECR via CI
+- **Deployment model:** single-container ECS Fargate task
+- **Port configuration:** application listens on `APP_PORT` (default: `80`)
+- **Frontend features:**
+  - Light / dark theme toggle
+  - Real-time log streaming via Server-Sent Events (SSE)
+  - Simple endpoints to generate traffic and simulate activity
+
+---
+
+### Wait Page & Frontend Flow
+
+- **Entry point:**  
+  The user accesses the public endpoint (API Gateway custom domain or default invoke URL).
+
+- **Warm-up phase:**  
+  The Wake Lambda returns a lightweight HTML response while the ECS service scales from `desiredCount=0` to `1`.
+
+- **Readiness check:**  
+  The Lambda polls ECS until the task reaches `RUNNING` state and the container becomes reachable.
+
+- **Redirect:**  
+  Once ready, the browser is redirected to the task’s public IP on `APP_PORT` (default `80`).
+
+- **Timeout protection:**  
+  If the task does not become ready within `WAIT_MS`, the request fails gracefully instead of redirecting prematurely.
 
 ---
 
 ## **Project Structure**
-```text
 
+```text
 docker-ecs-deployment
 ├── app/               # Node.js app (Express)
 ├── wake/              # Wake Lambda (Python)
@@ -196,8 +230,8 @@ docker-ecs-deployment
 ├── .github/           # CI/CD workflows + templates
 ├── README.md
 └── LICENSE
-
 ```
+
 **Full detailed structure:** see [`docs/architecture.md`](./docs/architecture.md)
 
 ---
@@ -227,48 +261,47 @@ docker-ecs-deployment
 - **Sequence Diagram:** [`docs/diagrams/sequence.md`](docs/diagrams/sequence.md)
 ---
 
-## **Environment Variables / Parameters**
+## Environment Variables / Parameters
 
-| Name                  | Location             | Description                                                        |
-|-----------------------|----------------------|--------------------------------------------------------------------|
-| `APP_PORT`            | Terraform → Task Env | Port the Node.js app listens on (default: `80`)                    |
-| `WAIT_MS`             | Lambda (Wake)        | Warm-up wait budget before redirecting to the task’s public IP     |
-| `CLUSTER_NAME`        | Lambda (Both)        | Name of the ECS cluster                                            |
-| `SERVICE_NAME`        | Lambda (Both)        | Name of the ECS service                                            |
-| `SLEEP_AFTER_MINUTES` | Lambda (Auto-Sleep)  | Idle timeout before scaling ECS back to `desiredCount=0`           |
-| `ECR_REPOSITORY`      | Terraform Locals     | Name of ECR repository storing the app image                       |
-| `AWS_REGION`          | All Components       | AWS region used across the stack (default: `us-east-1`)            |
+| Name                  | Scope                | Description |
+|-----------------------|----------------------|------------|
+| `APP_PORT`            | ECS Task             | Port the Node.js application listens on (default: `80`) |
+| `WAIT_MS`             | Wake Lambda          | Maximum wait time (ms) before redirecting to the task public IP |
+| `CLUSTER_NAME`        | Wake / Auto-Sleep    | Target ECS cluster name |
+| `SERVICE_NAME`        | Wake / Auto-Sleep    | Target ECS service name |
+| `SLEEP_AFTER_MINUTES` | Auto-Sleep Lambda    | Idle timeout before scaling service back to `desiredCount=0` |
+| `ECR_REPOSITORY`      | Terraform            | ECR repository storing the container image |
+| `AWS_REGION`          | Global               | AWS region used across all components (default `us-east-1`) |
 
 ---
 
-## **Cost Optimization Principles**
+## Cost Optimization Principles
 
-- **Scale-to-zero by default**  
-  The ECS service stays at `desiredCount=0` when idle, consuming no compute cost.
+- **Scale-to-zero architecture**  
+  ECS runs with `desiredCount=0` when idle — no continuous compute cost.
 
-- **Wake only when needed**  
-  The Wake Lambda starts the task on demand instead of running workloads 24/7.
+- **On-demand startup**  
+  Compute is provisioned only when traffic arrives.
 
-- **Eliminate ALB costs**  
-  No Application Load Balancer is used (saves ~$16–$20/month).  
-  API Gateway + Lambda handle the wake flow instead.
+- **No ALB**  
+  API Gateway + Lambda replace a load balancer, reducing fixed monthly cost.
 
-- **Use public-only subnets**  
-  No NAT Gateway is provisioned (saves ~$32–$40/month).
+- **No NAT Gateway**  
+  Public subnets are used to avoid NAT hourly charges.
 
-- **Small Fargate task size**  
-  The app uses 0.25 vCPU / 0.5 GB RAM — the cheapest Fargate tier.
+- **Minimal Fargate footprint**  
+  0.25 vCPU / 0.5 GB memory keeps runtime cost at the lowest tier.
 
-- **Short idle timeout (5 min)**  
-  Auto-Sleep minimizes “active task time” to reduce compute charges.
+- **Aggressive idle timeout**  
+  Service scales down quickly to minimize billable runtime.
 
-- **Minimal logging footprint**  
-  CloudWatch log retention is configured to keep costs near zero.
+- **Lean logging strategy**  
+  Controlled log retention prevents unnecessary CloudWatch charges.
 
-- **Terraform backend in S3 + DynamoDB**  
-  Both backend services cost pennies per month, even with frequent updates.
+- **Low-cost Terraform backend**  
+  S3 + DynamoDB provide reliable state management with negligible monthly cost.
 
-These principles keep the environment **near-zero cost** without sacrificing functionality.
+This design keeps infrastructure costs close to zero while maintaining full functionality.
 
 ---
 
@@ -314,26 +347,6 @@ Use:
   - IAM role attached to the ECS task  
 
 This keeps the project **fully keyless**, secure, and aligned with AWS best practices.
-
----
-
-### **Workflow Hygiene & Security**
-
-- All GitHub Actions authenticate using **OIDC** — no long-lived AWS keys.
-- Workflows run with **minimal permissions** (`id-token: write`, `contents: read`).
-- Terraform CI runs only on **pull requests**, never on pushes to main.
-- CI/CD jobs are isolated:
-  - **CI** builds and pushes Docker images.
-  - **CD** deploys infrastructure and updates ECS.
-  - **OPS** provides manual wake/sleep helpers.
-- Each workflow has **concurrency groups** to prevent overlapping runs.
-- Logs are kept lightweight to avoid leaking environment details.
-- No secrets are stored in repository, workflows, or Terraform state.
-- IAM roles used by CI/CD follow **least privilege**, scoped only to:
-  - ECR (push/pull)
-  - ECS (update service)
-  - Lambda (invoke)
-  - CloudWatch logs
   
 ---
 
@@ -343,17 +356,6 @@ This keeps the project **fully keyless**, secure, and aligned with AWS best prac
   - Builds the Docker image from `./app`
   - Tags the image using the **commit SHA** (immutable tag strategy)
   - Pushes the image to **Amazon ECR** — no `latest`, no overwrites
-
-- **Terraform CI (`terraform-ci.yml`)**
-  - Runs on **pull requests** to validate infrastructure changes
-  - Executes:
-    - `terraform fmt -check`
-    - `terraform init -backend=false`
-    - `terraform validate`
-    - `tflint`
-    - `tfsec`
-    - `checkov`
-  - Fails fast if there are formatting, linting, or security issues
 
 - **CD — Deploy / Destroy (`cd.yml`)**
   - Assumes AWS role via **GitHub OIDC**
@@ -378,61 +380,6 @@ This keeps the project **fully keyless**, secure, and aligned with AWS best prac
 
 ---
 
-## **Quick Reference**
-
-- **Wait Page:** https://api.ecs-demo.online  
-- **AWS Region:** us-east-1  
-- **ECR Repository:** ecs-demo-app  
-- **Cluster:** ecs-demo-cluster  
-- **Service:** ecs-demo-svc  
-- **Task Size:** 0.25 vCPU / 0.5 GB RAM  
-- **Idle Timeout:** 5 minutes (`SLEEP_AFTER_MINUTES` — Terraform variable & Lambda env)  
-- **Warm-up Budget:** 120s (`WAIT_MS`)  
-- **Public Endpoint:** redirects to the Fargate task’s public IP  
-- **Terraform Backend:** S3 + DynamoDB (project-specific names)  
-- **Compute Mode:** Scale-to-zero (desiredCount=0 by default)
-
----
-
-## **Security Posture & Static Analysis**
-
-- CI enforces formatting, validation, linting, and security scanning  
-  (`terraform fmt`, `validate`, **tflint**, **tfsec**, **checkov**)
-- All AWS access uses **GitHub OIDC** — no long-lived secrets
-- IAM follows **least privilege** for ECS, ECR, Lambda, Logs, and API Gateway
-- No sensitive data in GitHub, Terraform state, or Lambda/ECS env vars
-- Network footprint minimized: public-only subnets, no NAT Gateway, no ALB
-- Build artifacts isolated (`build/`), no compiled code stored in repo
-
----
-
-### **Tools & What They Cover**
-
-- **terraform fmt**  
-  Ensures consistent formatting across all Terraform files.
-
-- **terraform validate**  
-  Verifies that the Terraform configuration is syntactically correct.
-
-- **tflint**  
-  Lints Terraform code, catches mistakes, invalid arguments, deprecated attributes.
-
-- **tfsec**  
-  Static analysis for Terraform security issues (IAM, networking, encryption).
-
-- **checkov**  
-  Deep policy-as-code scanner covering misconfigurations, compliance, CIS benchmarks.
-
-- **GitHub OIDC**  
-  Secure authentication for CI/CD without storing AWS keys.
-
-- **AWS CLI**  
-  Operational checks: ECS state, Lambda logs, EventBridge rules, task details.
-
-These tools together cover **formatting**, **syntax**, **linting**, **security**, and **runtime validation** of the entire stack.
-
----
-
 ### **Where We Consciously Accept Trade-Offs**
 
 - **No ALB (HTTP-only after wake)**  
@@ -452,60 +399,6 @@ These tools together cover **formatting**, **syntax**, **linting**, **security**
 
 Each trade-off is intentional to support a **near-zero-cost, on-demand environment** suitable for demos, learning, and interviews.
 
----
-
-## **Terraform CI**
-
-### **Overview**
-
-Terraform CI runs automatically on every pull request that touches:
-
-- `infra/**`
-- `.github/workflows/terraform-ci.yml`
-- `.tflint.hcl`
-- `.checkov.yml`
-
-It verifies that **formatting, validation, linting, and security checks all pass**
-across multiple Terraform versions **before** changes reach `main`.
-
----
-
-### **Terraform Versions Tested**
-
-| **Terraform version** |
-|-----------------------|
-| 1.6.6                 |
-| 1.8.5                 |
-| 1.9.5                 |
-
-Each version runs the full set of format, validation, lint, and security checks.
-
----
-
-### **Checks Included**
-
-- **Formatting**
-  - `terraform fmt -check`
-- **Core validation**
-  - `terraform init -backend=false`
-  - `terraform validate`
-- **Static analysis**
-  - `tflint --recursive`
-- **Security scanning**
-  - `tfsec` (via `aquasecurity/tfsec-action`) for Terraform resources
-  - `checkov` (via `.checkov.yml` policy file) for Terraform + OpenAPI spec
-
-If any of these steps fail for any Terraform version, the CI check on the pull request is marked as failed.
-
----
-
-### **Files Involved**
-
-- `.github/workflows/terraform-ci.yml` – CI workflow definition  
-- `.tflint.hcl` – TFLint configuration  
-- `.checkov.yml` – Checkov policy and skipped rules for this demo design  
-- `infra/api/openapi-wake.yaml` – OpenAPI spec for the wake HTTP API  
-- `infra/` – Terraform root module and all infrastructure code
 ---
 
 ## **Screenshots**
@@ -544,32 +437,19 @@ CloudWatch logs confirm the autosleep action with the payload:
 
 ---
 
-### **Summary**
+## Summary
 
-This project delivers a **fully automated, on-demand ECS Fargate environment** that operates at **near-zero cost**.  
-It wakes within about a minute when accessed, sleeps when idle, and uses a minimal, secure, and production-style architecture with Terraform and GitHub Actions.
+This project implements a scale-to-zero ECS Fargate architecture with deterministic on-demand startup.
 
-AWS components, IAM roles, CI/CD, and Lambdas are all designed around:  
-- **Simplicity**  
-- **Security**  
-- **Cost efficiency**  
-- **Reproducibility**  
-- **Portfolio-ready clarity**
+The service remains at `desiredCount=0` when idle and provisions compute only when traffic arrives.  
+Wake and sleep logic is implemented through Lambda, with infrastructure fully managed via Terraform and deployed through GitHub Actions.
 
-Ideal for learning, demos, interviews, and real-world DevOps practice — all without paying for idle compute.
-
----
-
-## **Author & Portfolio**
-
-Portfolio website: https://rusets.com  
-More real AWS, DevOps, IaC, and automation projects by **Ruslan AWS**.
+The result is a minimal, reproducible, and cost-efficient platform that demonstrates controlled lifecycle management of containerized workloads on AWS.
 
 ---
 
 ## License
 
-Released under the MIT License.  
-See the LICENSE file for full details.
+This project is released under the MIT License.
 
-Branding name “🚀 Ruslan AWS” and related visuals may not be reused or rebranded without permission.
+See the `LICENSE` file for details.
