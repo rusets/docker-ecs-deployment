@@ -13,14 +13,14 @@
 
 I built this project as a fully automated, scale-to-zero ECS Fargate environment with on-demand provisioning and automatic shutdown.
 
-The service runs at **$0 by default** (`desiredCount=0`).  
-When a request hits the Wait Page, API Gateway triggers the Wake Lambda, which scales the ECS service to **1 task** and redirects the user to the task’s public IP.  
+The service runs at $0 by default (`desiredCount=0`).  
+When a request hits the Wait Page, API Gateway triggers the Wake Lambda, which scales the ECS service to 1 task and redirects the user to the task’s public IP.  
 After a defined idle period, the Auto-Sleep Lambda scales the service back to `0`.
 
 There is no ALB, no project-created Route 53 hosted zone, and no persistent compute.  
 The stack works directly on the API Gateway endpoint, with a custom domain as an optional layer.
 
-The architecture is intentionally minimal: **API Gateway + Lambda + ECS**.  
+The architecture is intentionally minimal: API Gateway + Lambda + ECS.  
 The goal is deterministic on-demand startup, clean infrastructure design, and the lowest possible AWS cost without sacrificing clarity or control.
 
 ---
@@ -167,22 +167,6 @@ Deterministic startup behavior with reliable redirects and no premature failures
 
 ---
 
-## Default Timings
-
-- **Wake delay:** ~40–60 seconds  
-  Time for Fargate to pull the image, start the task, and pass container health checks.
-
-- **Warm-up budget (`WAIT_MS`):** 120000 ms  
-  Maximum time the Wake Lambda waits for the task to reach `RUNNING` before returning a response.
-
-- **Idle timeout (`SLEEP_AFTER_MINUTES`):** 5 minutes  
-  If no activity is detected during this window, the Auto-Sleep Lambda scales the service back to `desiredCount=0`.
-
-- **Auto-sleep check interval:** 1 minute  
-  EventBridge triggers the sleep check on a fixed schedule.
-
----
-
 ## Application Layer
 
 - **Runtime:** Node.js (Express-based HTTP service)
@@ -232,76 +216,11 @@ docker-ecs-deployment
 └── LICENSE
 ```
 
-**Full detailed structure:** see [`docs/architecture.md`](./docs/architecture.md)
-
 ---
 
-## 📘 Documentation
+## Documentation
 
-- **Architecture:** [`docs/architecture.md`](docs/architecture.md)
-- **SLO:** [`docs/slo.md`](docs/slo.md)
-- **Monitoring:** [`docs/monitoring.md`](docs/monitoring.md)
-- **Cost Analysis:** [`docs/cost.md`](docs/cost.md)
-- **Threat Model:** [`docs/threat-model.md`](docs/threat-model.md)
-
-### ADRs
-- **ADR-001:** [`OIDC vs Access Keys`](docs/adr/ADR-001-oidc-vs-access-keys.md)
-- **ADR-002:** [`Single-AZ vs Multi-AZ`](docs/adr/ADR-002-single-az-vs-multi-az.md)
-- **ADR-003:** [`API Gateway as Public Entrypoint`](docs/adr/ADR-003-api-gateway-as-public-entrypoint.md)
-- **ADR-004:** [`ECS Fargate as Compute`](docs/adr/ADR-004-ecs-fargate.md)
-- **ADR-005:** [`Auto-Sleep via Lambda + EventBridge`](docs/adr/ADR-005-autosleep-lambda-eventbridge.md)
-
-### Runbooks
-- **Wake failures:** [`RUNBOOK-wake-failures.md`](docs/runbooks/RUNBOOK-wake-failures.md)
-- **Auto-sleep issues:** [`RUNBOOK-autosleep-issues.md`](docs/runbooks/RUNBOOK-autosleep-issues.md)
-- **Deployment rollback:** [`RUNBOOK-deployment-rollback.md`](docs/runbooks/RUNBOOK-deployment-rollback.md)
-
-### Diagrams
-- **Architecture Diagram:** [`docs/diagrams/architecture.md`](docs/diagrams/architecture.md)
-- **Sequence Diagram:** [`docs/diagrams/sequence.md`](docs/diagrams/sequence.md)
----
-
-## Environment Variables / Parameters
-
-| Name                  | Scope                | Description |
-|-----------------------|----------------------|------------|
-| `APP_PORT`            | ECS Task             | Port the Node.js application listens on (default: `80`) |
-| `WAIT_MS`             | Wake Lambda          | Maximum wait time (ms) before redirecting to the task public IP |
-| `CLUSTER_NAME`        | Wake / Auto-Sleep    | Target ECS cluster name |
-| `SERVICE_NAME`        | Wake / Auto-Sleep    | Target ECS service name |
-| `SLEEP_AFTER_MINUTES` | Auto-Sleep Lambda    | Idle timeout before scaling service back to `desiredCount=0` |
-| `ECR_REPOSITORY`      | Terraform            | ECR repository storing the container image |
-| `AWS_REGION`          | Global               | AWS region used across all components (default `us-east-1`) |
-
----
-
-## Cost Optimization Principles
-
-- **Scale-to-zero architecture**  
-  ECS runs with `desiredCount=0` when idle — no continuous compute cost.
-
-- **On-demand startup**  
-  Compute is provisioned only when traffic arrives.
-
-- **No ALB**  
-  API Gateway + Lambda replace a load balancer, reducing fixed monthly cost.
-
-- **No NAT Gateway**  
-  Public subnets are used to avoid NAT hourly charges.
-
-- **Minimal Fargate footprint**  
-  0.25 vCPU / 0.5 GB memory keeps runtime cost at the lowest tier.
-
-- **Aggressive idle timeout**  
-  Service scales down quickly to minimize billable runtime.
-
-- **Lean logging strategy**  
-  Controlled log retention prevents unnecessary CloudWatch charges.
-
-- **Low-cost Terraform backend**  
-  S3 + DynamoDB provide reliable state management with negligible monthly cost.
-
-This design keeps infrastructure costs close to zero while maintaining full functionality.
+**Docs:** [All Docs](./docs/) | [Architecture](./docs/architecture.md) | [Cost](./docs/cost.md) | [Configuration](./docs/configuration.md) | [Operational Model](./docs/operational-model.md) | [ADRs](./docs/adr/) | [Runbooks](./docs/runbooks/)
 
 ---
 
@@ -350,33 +269,18 @@ This keeps the project **fully keyless**, secure, and aligned with AWS best prac
   
 ---
 
-## **GitHub Actions Automation**
+## GitHub Actions Automation
 
-- **App CI (`ci.yml`)**
-  - Builds the Docker image from `./app`
-  - Tags the image using the **commit SHA** (immutable tag strategy)
-  - Pushes the image to **Amazon ECR** — no `latest`, no overwrites
+- **CI (`ci.yml`)**  
+  Builds Docker image, tags with commit SHA, pushes to ECR.
 
-- **CD — Deploy / Destroy (`cd.yml`)**
-  - Assumes AWS role via **GitHub OIDC**
-  - Runs `terraform apply` or `terraform destroy`
-  - Registers a new **ECS Task Definition**
-  - Updates the **ECS service** to the selected image tag
-  - Waits until the service becomes **stable**
-  - Deploys the exact **SHA-tagged image** produced by CI  
-    (ECR tag immutability ensures deterministic deployments)
+- **CD (`cd.yml`)**  
+  Assumes AWS role via OIDC, runs `terraform apply/destroy`, registers new task definition, updates ECS service, waits for stability.
 
-- **OPS — Wake / Sleep (`ops.yml`)**
-  - Provides manual operational helpers:
-    - `wake` → calls the **Wake API** (API Gateway) to start the service
-    - `sleep` → scales the ECS service to `desiredCount=0`
-  - Useful for manual checks, demos, and scheduled actions
+- **OPS (`ops.yml`)**  
+  Manual helpers for wake (API call) and sleep (`desiredCount=0`).
 
-- **Shared properties**
-  - All workflows use **OIDC-based authentication** (no static AWS keys)
-  - Permissions are scoped to **least privilege** (ECR, ECS, Lambda, logs)
-  - Concurrency controls prevent overlapping deployments
-  - Pipelines are designed to be **interview-friendly** and **production-style**
+All workflows use OIDC (no static AWS keys), least-privilege IAM, and deterministic SHA-based deployments.
 
 ---
 
